@@ -1,0 +1,2617 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>项目管理系统</title>
+<link href="/static/vendor/bootstrap.min.css" rel="stylesheet" />
+<style>
+  /* ============ 设计变量（深墨蓝 + 香槟金）============ */
+  :root{
+    --brand:#1b2743; --brand-2:#2f4270; --brand-soft:#eef1f8;
+    --bg:#f4f5f7; --card:#fff; --text:#1b2130; --muted:#8b93a4;
+    --line:#e6e8ee; --ok:#2e7d63; --warn:#a9762a; --danger:#b0473f;
+    --radius:12px;
+  }
+  *{box-sizing:border-box;}
+  body{
+    background:var(--bg); color:var(--text); margin:0;
+    font-family:"Microsoft YaHei","PingFang SC",system-ui,-apple-system,sans-serif;
+    font-size:14px; line-height:1.6;
+  }
+  .page{max-width:1220px; margin:0 auto; padding:18px 16px 90px;}
+
+  /* ============ 顶栏 ============ */
+  .topbar{
+    display:flex; align-items:center; justify-content:space-between; gap:14px; flex-wrap:wrap;
+    background:var(--card); border:1px solid var(--line); border-radius:var(--radius);
+    padding:12px 20px; margin-bottom:18px; box-shadow:0 1px 3px rgba(16,24,40,.04);
+  }
+  .topbar .brand{font-size:17px; font-weight:700; color:var(--brand); letter-spacing:.2px;}
+  .topbar .right{display:flex; align-items:center; gap:10px; flex-wrap:wrap;}
+  .who{font-weight:600;}
+  .pill{font-size:.75rem; padding:3px 10px; border-radius:99px; font-weight:600;}
+  .pill-dev{background:#eef2f7; color:#5b6b82;}
+  .pill-admin{background:#fdecec; color:var(--danger);}
+
+  /* ============ 卡片 ============ */
+  .card{
+    border:1px solid var(--line); border-radius:var(--radius); background:var(--card);
+    box-shadow:0 1px 3px rgba(16,24,40,.04); margin-bottom:18px;
+  }
+  .card-header{
+    background:#fff; border-bottom:1px solid var(--line); padding:14px 20px;
+    font-weight:600; font-size:15px; display:flex; align-items:center;
+    justify-content:space-between; gap:12px; flex-wrap:wrap;
+    border-radius:var(--radius) var(--radius) 0 0;
+  }
+  .card-header .sub{font-weight:400; font-size:.8rem; color:var(--muted);}
+  .card-body{padding:20px;}
+
+  /* ============ 区块标题 ============ */
+  .section-title{
+    font-size:14px; font-weight:700; color:#2f3d55; display:flex; align-items:center;
+    gap:8px; margin:24px 0 12px;
+  }
+  .section-title:first-child{margin-top:0;}
+  .section-title::before{
+    content:''; width:4px; height:15px; background:var(--brand);
+    border-radius:2px; display:inline-block;
+  }
+
+  /* ============ 提示条 ============ */
+  .tip{
+    background:#fff8e8; border:1px solid #ffe1a8; color:#8a5a00;
+    border-radius:10px; padding:10px 14px; font-size:.88rem; margin-bottom:16px;
+  }
+  .tip b{color:#7a4d00;}
+  .tip-blue{background:var(--brand-soft); border-color:#cfe0ff; color:#2c4a7c;}
+  .tip-blue b{color:#1c3d73;}
+
+  /* ============ 统计小条 ============ */
+  .stat-strip{display:flex; gap:12px; flex-wrap:wrap; margin-bottom:18px;}
+  .stat{
+    flex:1 1 150px; background:var(--card); border:1px solid var(--line);
+    border-radius:12px; padding:14px 18px; box-shadow:0 1px 3px rgba(16,24,40,.04);
+  }
+  .stat .n{font-size:24px; font-weight:700; color:var(--brand); line-height:1.2;}
+  .stat .l{font-size:.82rem; color:var(--muted);}
+  .stat.warn .n{color:var(--warn);}
+  .stat.ok .n{color:var(--ok);}
+
+  /* ============ 项目卡片 ============ */
+  .pcard{
+    border:1px solid var(--line); border-radius:12px; padding:16px 18px;
+    margin-bottom:14px; background:#fff; transition:.15s;
+  }
+  .pcard:last-child{margin-bottom:0;}
+  .pcard:hover{border-color:#c7d8ff; box-shadow:0 3px 12px rgba(31,111,235,.09);}
+  .pcard-head{display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:10px;}
+  .pcard-code{
+    font-family:ui-monospace,Menlo,Consolas,monospace; font-size:.82rem; font-weight:600;
+    color:#42536e; background:#f1f4f9; padding:3px 9px; border-radius:6px;
+  }
+  .pcard-name{font-weight:600; font-size:1.03rem;}
+  .pcard-right{margin-left:auto; display:flex; align-items:center; gap:10px;}
+  .pcard-progress{font-weight:700; font-size:1.06rem; color:var(--brand);}
+  .pcard-meta{display:flex; gap:22px; flex-wrap:wrap; color:var(--muted); font-size:.84rem; margin-bottom:12px;}
+  .pcard-meta b{color:#4a5b74; font-weight:600;}
+  .pcard-tasks{
+    font-size:.85rem; color:#4d5769; background:#fafbfc; border-left:3px solid var(--gold-500);
+    border-radius:6px; padding:8px 12px; margin-bottom:10px;
+    white-space:pre-wrap; word-break:break-word; max-height:92px; overflow:auto;
+  }
+
+  /* 项目卡片：横向网格排列（一行多列；窄屏自动变单列） */
+  .pcard-grid{
+    display:grid;
+    grid-template-columns:repeat(auto-fill, minmax(400px, 1fr));
+    gap:14px;
+    align-items:stretch;
+  }
+  .pcard-grid .pcard{margin-bottom:0; display:flex; flex-direction:column;}
+  .pcard-grid .pcard-fill{margin-top:auto;}
+  @media (max-width:900px){
+    .pcard-grid{grid-template-columns:1fr; gap:12px;}
+  }
+
+  .pbar{height:8px; background:#e9eefb; border-radius:99px; overflow:hidden; margin-top:6px;}
+  .pbar > i{display:block; height:100%; background:linear-gradient(90deg,var(--brand-2),var(--brand)); border-radius:99px;}
+
+  .pcard-fill{background:#f8fafd; border:1px dashed #d5e0f2; border-radius:10px; padding:14px;}
+  .pcard-fill .fill-title{font-size:.84rem; font-weight:600; color:#4a5b74; margin-bottom:10px;}
+  .pcard-actions{display:flex; gap:8px; flex-wrap:wrap; margin-top:12px;}
+
+  /* ============ 徽章 ============ */
+  .badge-market{background:var(--brand); color:#fff;}
+  .badge-self{background:var(--ok); color:#fff;}
+  .tag{font-size:.72rem; padding:2px 7px; border-radius:5px; font-weight:600;}
+  .tag-ok{background:#e7f7ee; color:var(--ok);}
+  .tag-warn{background:#fff4e0; color:var(--warn);}
+
+  /* ============ 表格 ============ */
+  .table{font-size:.9rem; margin-bottom:0;}
+  .table > thead > tr > th{
+    background:#f7f9fc; color:#5b6b82; font-weight:600; font-size:.82rem;
+    border-bottom:1px solid var(--line); white-space:nowrap; padding:11px 12px;
+  }
+  .table > tbody > tr > td{padding:11px 12px; vertical-align:middle; border-color:#eef1f6;}
+  .table-hover > tbody > tr:hover > td{background:#f9fbff;}
+  .row-current{background:var(--brand-soft) !important;}
+  .month-row{cursor:pointer;}
+
+  /* 月度矩阵：首列固定 */
+  .matrix th:first-child, .matrix td:first-child{
+    position:sticky; left:0; background:#fff; z-index:2; box-shadow:1px 0 0 var(--line);
+  }
+  .matrix thead th:first-child{background:#f7f9fc;}
+
+  /* ============ 表单 ============ */
+  .form-label{font-size:.85rem; font-weight:600; color:#4a5b74; margin-bottom:5px;}
+  .form-control, .form-select{font-size:.9rem; border-color:#dbe2ee;}
+  .form-control:focus, .form-select:focus{border-color:var(--brand); box-shadow:0 0 0 3px rgba(31,111,235,.12);}
+  textarea.form-control{font-size:.88rem; line-height:1.5;}
+  .btn{font-size:.88rem;}
+  .btn-primary{background:var(--brand); border-color:var(--brand);}
+  .btn-primary:hover{background:#1a5fd0; border-color:#1a5fd0;}
+
+  /* ============ 登录 ============ */
+  .login-wrap{max-width:430px; margin:6vh auto 0;}
+  .login-brand{text-align:center; margin-bottom:26px;}
+  .login-brand h1{font-size:22px; font-weight:700; color:var(--brand); margin:0 0 6px;}
+  .login-brand p{color:var(--muted); font-size:.86rem; margin:0;}
+  .nav-tabs{border-bottom:1px solid var(--line);}
+  .nav-tabs .nav-link{border:0; color:#66748c; font-weight:600; padding:10px 16px; font-size:.92rem;}
+  .nav-tabs .nav-link.active{color:var(--brand); border-bottom:2px solid var(--brand); background:transparent;}
+
+  /* ============ 筛选区 ============ */
+  .filter-bar{
+    background:#f8fafd; border:1px solid #e8eef8; border-radius:10px;
+    padding:14px 16px; margin-bottom:18px;
+  }
+
+  /* ============ 左侧菜单 + 内容区 ============ */
+  .layout{display:flex; gap:18px; align-items:flex-start;}
+  .sidebar{
+    width:196px; flex:0 0 196px; background:var(--card); border:1px solid var(--line);
+    border-radius:var(--radius); padding:10px; position:sticky; top:18px;
+    box-shadow:0 1px 3px rgba(16,24,40,.04);
+  }
+  .side-title{
+    font-size:.72rem; color:var(--muted); font-weight:700; letter-spacing:.6px;
+    padding:6px 10px 8px; text-transform:uppercase;
+  }
+  .side-item{
+    display:flex; align-items:center; gap:9px; width:100%; text-align:left;
+    border:0; background:transparent; padding:10px 12px; border-radius:9px;
+    font-size:.92rem; color:#42536e; cursor:pointer; margin-bottom:3px;
+    transition:background .15s, color .15s;
+  }
+  .side-item:hover{background:#f3f6fc;}
+  .side-item.active{background:var(--brand-soft); color:var(--brand); font-weight:700;}
+  .side-item .ico{font-size:15px; line-height:1;}
+  .content{flex:1 1 auto; min-width:0;}
+  .module{animation:fadeUp .18s ease;}
+  @keyframes fadeUp{from{opacity:0; transform:translateY(5px);} to{opacity:1; transform:none;}}
+  .page-title{
+    font-size:17px; font-weight:700; color:#2f3d55; margin:0 0 14px;
+    display:flex; align-items:center; gap:8px;
+  }
+  @media (max-width:860px){
+    .layout{flex-direction:column; gap:12px;}
+    .sidebar{
+      width:100%; flex:none; position:static; display:flex; gap:6px;
+      overflow-x:auto; padding:8px; margin-bottom:0;
+    }
+    .side-title{display:none;}
+    .side-item{width:auto; white-space:nowrap; margin-bottom:0;}
+  }
+  .muted{color:var(--muted);}
+  .hidden{display:none !important;}
+  .toast-wrap{position:fixed; top:18px; right:18px; z-index:2000; max-width:380px;}
+  .toast-wrap .alert{box-shadow:0 6px 20px rgba(16,24,40,.12); border:1px solid var(--line); font-size:.9rem;}
+  .items-cell{max-width:280px;}
+  .items-cell .itm{font-size:.82rem; color:#4a5b74; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  .items-cell .itm + .itm{margin-top:3px;}
+  .empty-state{text-align:center; color:var(--muted); padding:34px 10px;}
+  .empty-state .big{font-size:30px; margin-bottom:8px;}
+  @media (max-width:767px){
+    .page{padding:12px 10px 70px;}
+    .card-body{padding:14px;}
+    .pcard-right{margin-left:0; width:100%;}
+  }
+
+  /* ============================================================
+     高级配色（覆盖层）：深墨蓝 + 香槟金，低饱和、克制用金
+     ============================================================ */
+  :root{
+    --brand:#1b2743;        /* 主色：深墨蓝 */
+    --brand-2:#2f4270;
+    --brand-soft:#eef1f8;
+    --bg:#f4f5f7;
+    --card:#ffffff;
+    --text:#1b2130;
+    --muted:#8b93a4;
+    --line:#e6e8ee;
+    --ok:#2e7d63;
+    --warn:#a9762a;
+    --danger:#b0473f;
+    --navy-900:#141d33; --navy-800:#1b2743; --navy-700:#243355;
+    --navy-600:#2f4270; --navy-100:#eef1f8; --navy-50:#f6f8fc;
+    --gold-600:#9c7b46; --gold-500:#b08d57; --gold-100:#f7f1e6;
+    --line-2:#eff1f5;
+    --radius:12px;
+    --shadow-sm:0 1px 2px rgba(20,29,51,.04), 0 1px 3px rgba(20,29,51,.05);
+    --shadow-md:0 4px 12px rgba(20,29,51,.07), 0 14px 30px rgba(20,29,51,.06);
+  }
+  body{
+    background:linear-gradient(180deg,#f7f8fa 0,#f3f4f7 240px,#f3f4f7 100%);
+    color:var(--text);
+    -webkit-font-smoothing:antialiased;
+  }
+  /* —— 顶栏 / 品牌 —— */
+  .topbar{box-shadow:var(--shadow-sm);}
+  .topbar .brand{color:var(--navy-800); display:flex; align-items:center; gap:9px; letter-spacing:.2px;}
+  .topbar .brand::before{
+    content:''; width:4px; height:17px; border-radius:2px;
+    background:linear-gradient(180deg,var(--gold-500),var(--navy-700));
+  }
+  .pill{border-radius:99px; letter-spacing:.2px;}
+  .pill-dev{background:#eef0f5; color:#5a6478;}
+  .pill-admin{background:var(--gold-100); color:var(--gold-600); box-shadow:inset 0 0 0 1px #eadfc9;}
+  /* —— 卡片 —— */
+  .card{box-shadow:var(--shadow-sm);}
+  .card-header{color:var(--navy-800); font-size:14.5px; letter-spacing:.2px; border-bottom:1px solid var(--line-2);}
+  .card-header .sub{font-weight:400;}
+  /* —— 左侧菜单：选中态用深墨蓝填充 —— */
+  .sidebar{box-shadow:var(--shadow-sm);}
+  .side-title{color:#9aa2b1; letter-spacing:.8px;}
+  .side-item{color:#4d5769;}
+  .side-item:hover{background:var(--navy-50); color:var(--navy-700);}
+  .side-item.active{
+    background:var(--navy-800); color:#fff;
+    box-shadow:0 2px 8px rgba(20,29,51,.18);
+  }
+  /* —— 标题 —— */
+  .page-title{color:var(--navy-800); font-size:16px; letter-spacing:.2px;}
+  .page-title::before{
+    content:''; width:4px; height:16px; border-radius:2px; display:inline-block; margin-right:2px;
+    background:linear-gradient(180deg,var(--gold-500),var(--navy-700));
+  }
+  .section-title{color:var(--navy-700);}
+  .section-title::before{background:var(--gold-500);}
+  /* —— 统计卡：左侧细色条 —— */
+  .stat{position:relative; padding:16px 18px 15px 20px; overflow:hidden; box-shadow:var(--shadow-sm);}
+  .stat::before{content:''; position:absolute; left:0; top:0; bottom:0; width:3px; background:var(--navy-600);}
+  .stat.ok::before{background:var(--ok);}
+  .stat.warn::before{background:var(--warn);}
+  .stat .n{color:var(--navy-800); font-size:26px; letter-spacing:-.5px; font-variant-numeric:tabular-nums;}
+  .stat .l{font-size:.79rem; letter-spacing:.3px;}
+  /* —— 项目卡片 —— */
+  .pcard{transition:.18s;}
+  .pcard:hover{border-color:#cfd7e6; box-shadow:var(--shadow-md);}
+  .pcard-code{background:var(--navy-50); color:var(--navy-700); box-shadow:inset 0 0 0 1px var(--line-2);}
+  .pcard-name{color:var(--navy-800);}
+  .pcard-progress{color:var(--navy-800);}
+  .pcard-meta b{color:#3d4759;}
+  .pbar{background:#eceef3;}
+  .pbar > i{background:linear-gradient(90deg,var(--navy-600),var(--navy-800));}
+  .pcard-fill{background:#fbfbfd; border:1px dashed #dfe3ec;}
+  .pcard-fill .fill-title{color:#4d5769;}
+  /* —— 徽章 / 标签 —— */
+  .badge-market{background:var(--navy-700);}
+  .badge-self{background:var(--ok);}
+  .tag{letter-spacing:.2px;}
+  .tag-ok{background:#e9f4f0; color:var(--ok);}
+  .tag-warn{background:#faf3e6; color:var(--warn);}
+  /* —— 表格 —— */
+  .table > thead > tr > th{
+    background:#fafbfc; color:#5f6a7d; font-size:.79rem; letter-spacing:.3px;
+    border-bottom:1px solid var(--line);
+  }
+  .table > tbody > tr > td{border-color:var(--line-2);}
+  .table-hover > tbody > tr:hover > td{background:var(--navy-50);}
+  .row-current{background:var(--navy-50) !important;}
+  .matrix th:first-child, .matrix td:first-child{box-shadow:1px 0 0 var(--line);}
+  .matrix thead th:first-child{background:#fafbfc;}
+  .items-cell .itm{color:#4d5769;}
+  /* —— 表单 —— */
+  .form-label{color:#4d5769;}
+  .form-control, .form-select{border-color:#dde1e9;}
+  .form-control:focus, .form-select:focus{
+    border-color:var(--navy-600); box-shadow:0 0 0 3px rgba(27,39,67,.10);
+  }
+  /* —— 按钮 —— */
+  .btn{letter-spacing:.2px;}
+  .btn-primary{background:var(--navy-800); border-color:var(--navy-800);}
+  .btn-primary:hover, .btn-primary:focus{background:var(--navy-700); border-color:var(--navy-700);}
+  .btn-success{background:var(--ok); border-color:var(--ok);}
+  .btn-success:hover{background:#266a54; border-color:#266a54;}
+  .btn-outline-primary{color:var(--navy-700); border-color:#ccd4e3;}
+  .btn-outline-primary:hover{background:var(--navy-800); border-color:var(--navy-800); color:#fff;}
+  .btn-outline-secondary{color:#4d5769; border-color:#dde1e9;}
+  .btn-outline-secondary:hover{background:#eef0f5; border-color:#d2d7e0; color:var(--navy-800);}
+  .btn-outline-danger{color:var(--danger); border-color:#e6cdca;}
+  .btn-outline-danger:hover{background:var(--danger); border-color:var(--danger); color:#fff;}
+  .btn-outline-success{color:var(--ok); border-color:#c6e0d6;}
+  .btn-outline-success:hover{background:var(--ok); border-color:var(--ok); color:#fff;}
+  .btn-warning{background:var(--warn); border-color:var(--warn); color:#fff;}
+  .btn-warning:hover{background:#97691f; border-color:#97691f; color:#fff;}
+  /* —— 提示条 —— */
+  .tip{background:#fbf7ef; border-color:#eee0c8; color:#7a5c22;}
+  .tip b{color:#6b4f1c;}
+  .tip-blue{background:var(--navy-50); border-color:#e0e6f2; color:var(--navy-700);}
+  .tip-blue b{color:var(--navy-800);}
+  .alert-warning{background:#fbf7ef; border-color:#eee0c8; color:#7a5c22;}
+  /* —— 筛选区 / 登录页 —— */
+  .filter-bar{background:#fafbfc;}
+  .login-brand h1{color:var(--navy-800); letter-spacing:.3px;}
+  .nav-tabs .nav-link{color:#6b7488; letter-spacing:.2px;}
+  .nav-tabs .nav-link.active{color:var(--navy-800); border-bottom:2px solid var(--gold-500);}
+  /* —— 其他 —— */
+  .toast-wrap .alert{box-shadow:var(--shadow-md);}
+</style>
+<link rel="stylesheet" href="/static/pm.css">
+</head>
+<body>
+
+<div class="toast-wrap" id="toastWrap"></div>
+
+<div class="page" id="appShell">
+
+  <!-- ==================== 登录 / 注册 ==================== -->
+  <div id="loginView" class="hidden">
+    <div class="login-wrap">
+      <div class="login-brand">
+        <h1>项目管理系统</h1>
+        <p>从立项到交付，让每一步进展清晰可见</p>
+      </div>
+      <div class="card">
+        <div class="card-body p-4">
+          <ul class="nav nav-tabs mb-4">
+            <li class="nav-item"><button class="nav-link active" id="tabLoginBtn" onclick="js_switchTab('login')">登录</button></li>
+            <li class="nav-item"><button class="nav-link" id="tabRegisterBtn" onclick="js_switchTab('register')">注册</button></li>
+          </ul>
+
+          <form id="loginForm" onsubmit="return js_login(event)">
+            <div class="mb-3">
+              <label class="form-label" for="loginPhone">手机号 / 管理员账号</label>
+              <input type="text" class="form-control" id="loginPhone" placeholder="请输入手机号，管理员输入 admin" autocomplete="username" />
+            </div>
+            <div class="mb-4">
+              <label class="form-label">密码</label>
+              <div class="input-group">
+                <!-- 默认隐藏密码，可通过按钮切换 -->
+                <input type="password" class="form-control" id="loginPassword" placeholder="请输入密码" autocomplete="current-password" />
+                <button class="btn btn-outline-secondary" type="button" onclick="js_togglePwd('loginPassword', this)">👁</button>
+              </div>
+            </div>
+            <button type="submit" class="btn btn-primary w-100 py-2">登 录</button>
+            <div class="d-flex justify-content-between mt-3"><button type="button" class="btn btn-link" onclick="js_showChangePw()">修改密码</button><button type="button" class="btn btn-link" onclick="js_forgotPassword()">忘记密码？</button></div>
+          </form>
+
+          <form id="registerForm" class="hidden" onsubmit="return js_register(event)">
+            <div class="mb-3">
+              <label class="form-label">姓名 <span class="text-danger">*</span></label>
+              <input type="text" class="form-control" id="regName" placeholder="请输入真实姓名（同名不可注册）" />
+            </div>
+            <div class="mb-3">
+              <label class="form-label">手机号 <span class="text-danger">*</span></label>
+              <input type="text" class="form-control" id="regPhone" placeholder="请输入手机号（用作登录账号）" />
+            </div>
+            <div class="mb-3">
+              <label class="form-label">密码 <span class="text-danger">*</span></label>
+              <div class="input-group">
+                <input type="password" class="form-control" id="regPassword" placeholder="请设置密码（至少 6 位）" autocomplete="new-password" />
+                <button class="btn btn-outline-secondary" type="button" onclick="js_togglePwd('regPassword', this)">👁</button>
+              </div>
+            </div>
+            <div class="mb-4">
+              <label class="form-label">确认密码 <span class="text-danger">*</span></label>
+              <div class="input-group">
+                <input type="password" class="form-control" id="regPassword2" placeholder="请再次输入密码" autocomplete="new-password" />
+                <button class="btn btn-outline-secondary" type="button" onclick="js_togglePwd('regPassword2', this)">👁</button>
+              </div>
+            </div>
+            <button type="submit" class="btn btn-primary w-100 py-2">注 册</button>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== 首次登录强制改密 ==================== -->
+  <div id="changePwView" class="hidden">
+    <div class="login-wrap">
+      <div class="card">
+        <div class="card-header">首次登录，请设置新密码</div>
+        <div class="card-body p-4">
+          <p class="muted mb-4" style="font-size:.88rem;">你使用的是初始密码，为确保账号安全，请先设置一个新密码。</p>
+          <form onsubmit="return js_changePassword(event)">
+            <div class="mb-3">
+              <label class="form-label">新密码</label>
+              <div class="input-group">
+                <input type="password" class="form-control" id="pw1" autocomplete="new-password" />
+                <button class="btn btn-outline-secondary" type="button" onclick="js_togglePwd('pw1', this)">👁</button>
+              </div>
+            </div>
+            <div class="mb-4">
+              <label class="form-label">确认新密码</label>
+              <div class="input-group">
+                <input type="password" class="form-control" id="pw2" autocomplete="new-password" />
+                <button class="btn btn-outline-secondary" type="button" onclick="js_togglePwd('pw2', this)">👁</button>
+              </div>
+            </div>
+            <button type="submit" class="btn btn-primary w-100 py-2">保存并进入系统</button>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== 研发人员主页 ==================== -->
+  <div id="engineerView" class="hidden">
+    <div class="topbar">
+      <span class="brand">项目管理系统</span>
+      <div class="right">
+        <span class="who" id="engUserName"></span>
+        <span class="pill pill-dev">研发人员</span>
+        <button class="btn btn-outline-secondary btn-sm" onclick="js_showChangePw()">修改密码</button>
+        <button class="btn btn-outline-danger btn-sm" onclick="js_logout()">退出登录</button>
+      </div>
+    </div>
+
+    <div class="layout">
+      <!-- ================= 左侧菜单 ================= -->
+      <aside class="sidebar">
+        <div class="side-title">研发人员</div>
+        <button class="side-item active" data-mod="m-overview" onclick="js_go('m-overview')"><span class="ico">📊</span><span>我的概览</span></button>
+        <button class="side-item" data-mod="m-profile" onclick="js_go('m-profile')"><span class="ico">👤</span><span>我的个人信息</span></button>
+        <button class="side-item" data-mod="m-projects" onclick="js_go('m-projects')"><span class="ico">📁</span><span>我的项目</span></button>
+        <button class="side-item" data-mod="m-progress" onclick="js_go('m-progress')"><span class="ico">📅</span><span>我的项目进度</span></button>
+        <!-- 部门负责人专属菜单（普通研发不显示） -->
+        <div class="side-title dm-only hidden">部门负责人</div>
+        <button class="side-item dm-only hidden" data-mod="dm-members" onclick="js_go('dm-members')"><span class="ico">👥</span><span>部门成员</span></button>
+        <button class="side-item dm-only hidden" data-mod="dm-projects" onclick="js_go('dm-projects')"><span class="ico">📁</span><span>部门项目</span></button>
+        <button class="side-item dm-only hidden" data-mod="dm-performance" onclick="js_go('dm-performance')"><span class="ico">📈</span><span>部门绩效</span></button>
+      </aside>
+
+      <!-- ================= 右侧内容区 ================= -->
+      <main class="content">
+
+        <!-- ===== 模块：我的概览 ===== -->
+        <section class="module" id="m-overview">
+          <h2 class="page-title">📊 我的概览</h2>
+          <div class="row g-3">
+            <div class="col-6 col-xl-3"><div class="stat h-100"><div class="n" id="statTotal">0</div><div class="l">我的项目总数</div></div></div>
+            <div class="col-6 col-xl-3"><div class="stat ok h-100"><div class="n" id="statFilled">0</div><div class="l">本期已填报</div></div></div>
+            <div class="col-6 col-xl-3"><div class="stat warn h-100"><div class="n" id="statPending">0</div><div class="l">本期未填报</div></div></div>
+            <div class="col-6 col-xl-3"><div class="stat h-100"><div class="n" id="statPeriod" style="font-size:18px;">-</div><div class="l">当前可填报月份</div></div></div>
+          </div>
+          <div id="engPendingBanner" class="alert alert-warning hidden py-2 mt-3" style="font-size:.88rem;"></div>
+          <div class="tip tip-blue mt-3" style="margin-bottom:0;">
+            💡 每月只能填报 <b>上一个月</b> 的进度与事项。点击左侧「<b>我的项目</b>」可填报，项目多时可用其中的<b>筛选</b>快速定位。
+          </div>
+        </section>
+
+        <!-- ===== 模块：我的个人信息 ===== -->
+        <section class="module hidden" id="m-profile">
+          <h2 class="page-title">👤 我的个人信息</h2>
+          <div class="card mb-0" style="max-width:560px;">
+            <div class="card-header">基本资料</div>
+            <div class="card-body">
+              <div class="mb-3">
+                <label class="form-label">姓名</label>
+                <input type="text" class="form-control" id="engName" readonly />
+              </div>
+              <div class="mb-3">
+                <label class="form-label">手机号</label>
+                <input type="text" class="form-control" id="engPhone" readonly />
+              </div>
+              <div class="mb-3">
+                <label class="form-label" for="engDept">一级部门 <span class="text-danger">*</span></label>
+                <input type="text" class="form-control" id="engDept" oninput="updateProfileDepartmentPath()" placeholder="如：研发一部" />
+              </div><div class="mb-3"><label class="form-label" for="engDept2">二级部门</label><input class="form-control" id="engDept2" oninput="updateProfileDepartmentPath()" placeholder="如：电子电气组"></div>
+<div class="mb-3"><label class="form-label" for="engDept3">三级部门</label><input class="form-control" id="engDept3" oninput="updateProfileDepartmentPath()" placeholder="如：应用组"></div>
+<div class="tip tip-blue">完整部门：<span id="engDeptPath"></span></div>
+
+              <div class="mb-4">
+                <label class="form-label">职位 <span class="text-danger">*</span></label>
+                <input type="text" class="form-control" id="engPos" placeholder="如：软件工程师" />
+              </div>
+              <button class="btn btn-primary" onclick="js_saveProfile()">保存个人信息</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- ===== 模块：我的项目 ===== -->
+        <section class="module hidden" id="m-projects">
+          <h2 class="page-title">📁 我的项目</h2>
+          <div class="card mb-0">
+            <div class="card-header">
+              <span>项目列表 <span class="sub">只显示你自己添加的项目</span></span>
+              <button class="btn btn-primary btn-sm" onclick="js_showProjectForm()">+ 添加项目</button>
+            </div>
+            <div class="card-body">
+              <div class="tip">
+                📅 每月只能填报 <b>上一个月</b> 的进度与事项。当前可填报月份：<b id="engPeriodLabel">加载中…</b>（其他月份只读）
+              </div>
+
+              <!-- 筛选工具条 -->
+              <div class="filter-bar">
+                <div class="row g-2 align-items-end">
+                  <div class="col-md-3">
+                    <label class="form-label">🔍 关键字</label>
+                    <input type="text" class="form-control form-control-sm" id="fKeyword"
+                           placeholder="项目编码 / 名称 / 任务" oninput="applyProjectFilter()" />
+                  </div>
+                  <div class="col-6 col-md-2">
+                    <label class="form-label">项目编码</label>
+                    <select class="form-select form-select-sm" id="fCode" onchange="applyProjectFilter()">
+                      <option value="">全部编码</option>
+                    </select>
+                  </div>
+                  <div class="col-6 col-md-2">
+                    <label class="form-label">项目类别</label>
+                    <select class="form-select form-select-sm" id="fCategory" onchange="applyProjectFilter()">
+                      <option value="">全部类别</option>
+                      <option value="market">市场项目</option>
+                      <option value="self">自研项目</option>
+                    </select>
+                  </div>
+                  <div class="col-6 col-md-2">
+                    <label class="form-label">填报状态</label>
+                    <select class="form-select form-select-sm" id="fStatus" onchange="applyProjectFilter()">
+                      <option value="">全部状态</option>
+                      <option value="filled">本期已填报</option>
+                      <option value="pending">本期未填报</option>
+                    </select>
+                  </div>
+                  <div class="col-6 col-md-2">
+                    <label class="form-label">排序</label>
+                    <select class="form-select form-select-sm" id="fSort" onchange="applyProjectFilter()">
+                      <option value="default">默认排序</option>
+                      <option value="pending">待填报优先</option>
+                      <option value="progress_desc">进度 高→低</option>
+                      <option value="progress_asc">进度 低→高</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="mt-2 d-flex justify-content-between align-items-center flex-wrap gap-2">
+                  <span class="muted" id="filterSummary" style="font-size:.82rem;"></span>
+                  <button class="btn btn-outline-secondary btn-sm" onclick="js_resetProjectFilter()">重置筛选</button>
+                </div>
+              </div>
+
+              <div id="engProjectList">加载中…</div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ===== 模块：我的项目进度 ===== -->
+        <section class="module hidden" id="m-progress">
+          <h2 class="page-title">📅 我的项目进度</h2>
+          <div class="card mb-0">
+            <div class="card-header">
+              <span>月度进度一览 <span class="sub">只显示每月填报的进度，不含绩效评分</span></span>
+              <div class="d-flex align-items-center gap-2">
+                <label class="form-label mb-0">年份</label>
+                <select class="form-select form-select-sm" id="myYearSelect" style="width:auto" onchange="renderMyMonthlyProgress()"></select>
+              </div>
+            </div>
+            <div class="card-body">
+              <div id="myProgressMatrix">加载中…</div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ===== 模块：部门成员（部门负责人） ===== -->
+        <section class="module hidden" id="dm-members">
+          <h2 class="page-title">👥 部门成员</h2><div class="org-filter-bar filter-bar" data-org-section="dm-members"></div>
+          <div class="card mb-0">
+            <div class="card-header">
+              <span id="dmMembersTitle">本部门成员</span>
+              <button class="btn btn-outline-secondary btn-sm" onclick="loadDeptMembers()">↻ 刷新</button>
+            </div>
+            <div class="card-body">
+              <div class="tip tip-blue">你是 <b>部门负责人</b>，可查看<b>本部门</b>成员的项目与绩效（只读）。</div>
+              <div id="dmMembersList">加载中…</div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ===== 模块：部门项目（部门负责人） ===== -->
+        <section class="module hidden" id="dm-projects">
+          <h2 class="page-title">📁 部门项目</h2><div class="org-filter-bar filter-bar" data-org-section="dm-projects"></div>
+          <div class="card mb-0">
+            <div class="card-header">
+              <span id="dmProjectsTitle">本部门全部项目</span>
+              <button class="btn btn-outline-secondary btn-sm" onclick="loadDeptProjects()">↻ 刷新</button>
+            </div>
+            <div class="card-body">
+              <div class="filter-bar">
+                <div class="row g-2 align-items-end">
+                  <div class="col-md-2">
+                    <label class="form-label">🔍 关键字</label>
+                    <input type="text" class="form-control form-control-sm" id="dfKeyword"
+                           placeholder="编码 / 名称" oninput="applyDeptProjectFilter()" />
+                  </div>
+                  <div class="col-6 col-md-2">
+                    <label class="form-label">项目编码</label>
+                    <select class="form-select form-select-sm" id="dfCode" onchange="applyDeptProjectFilter()">
+                      <option value="">全部编码</option>
+                    </select>
+                  </div>
+                  <div class="col-6 col-md-2">
+                    <label class="form-label">成员</label>
+                    <select class="form-select form-select-sm" id="dfOwner" onchange="applyDeptProjectFilter()">
+                      <option value="">全部成员</option>
+                    </select>
+                  </div>
+                  <div class="col-6 col-md-2">
+                    <label class="form-label">项目类别</label>
+                    <select class="form-select form-select-sm" id="dfCategory" onchange="applyDeptProjectFilter()">
+                      <option value="">全部类别</option>
+                      <option value="market">市场项目</option>
+                      <option value="self">自研项目</option>
+                    </select>
+                  </div>
+                  <div class="col-6 col-md-2">
+                    <label class="form-label">填报状态</label>
+                    <select class="form-select form-select-sm" id="dfStatus" onchange="applyDeptProjectFilter()">
+                      <option value="">全部状态</option>
+                      <option value="filled">本期已填报</option>
+                      <option value="pending">本期未填报</option>
+                    </select>
+                  </div>
+                  <div class="col-6 col-md-2">
+                    <label class="form-label">排序</label>
+                    <select class="form-select form-select-sm" id="dfSort" onchange="applyDeptProjectFilter()">
+                      <option value="default">默认排序</option>
+                      <option value="pending">待填报优先</option>
+                      <option value="progress_desc">进度 高→低</option>
+                      <option value="progress_asc">进度 低→高</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="mt-2 d-flex justify-content-between align-items-center flex-wrap gap-2">
+                  <span class="muted" id="deptFilterSummary" style="font-size:.82rem;"></span>
+                  <button class="btn btn-outline-secondary btn-sm" onclick="js_resetDeptProjectFilter()">重置筛选</button>
+                </div>
+              </div>
+              <div id="dmProjectList">加载中…</div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ===== 模块：部门绩效（部门负责人） ===== -->
+        <section class="module hidden" id="dm-performance">
+          <h2 class="page-title">📈 部门绩效</h2><div class="org-filter-bar filter-bar" data-org-section="dm-performance"></div>
+          <div class="card mb-0">
+            <div class="card-header">
+              <span id="dmPerfTitle">本部门月度绩效</span>
+              <div>
+                <button class="btn btn-success btn-sm" onclick="js_exportDept()">⬇ 导出本部门 Excel</button>
+              </div>
+            </div>
+            <div class="card-body">
+              <div class="filter-bar">
+                <div class="row g-2 align-items-end">
+                  <div class="col-md-5">
+                    <label class="form-label">选择本部门成员</label>
+                    <select class="form-select" id="dmUserSelect" onchange="js_renderDeptPerf()"></select>
+                  </div>
+                  <div class="col-md-3">
+                    <label class="form-label">年份</label>
+                    <select class="form-select" id="dmYearSelect" onchange="loadDeptPerformance()"></select>
+                  </div>
+                  <div class="col-md-3">
+                    <label class="form-label">月份</label>
+                    <select class="form-select" id="dmMonthSelect" onchange="js_renderDeptPerf()"></select>
+                  </div>
+                </div>
+                <div class="mt-2 muted" id="dmWeightNote" style="font-size:.82rem;"></div>
+              </div>
+              <div id="dmPerfResult"><p class="muted">请选择成员后查看该月绩效。</p></div>
+              <div class="section-title" id="dmPerfYearTitle">全年逐月绩效</div>
+              <div id="dmPerfMonths"></div>
+            </div>
+          </div>
+        </section>
+
+      </main>
+    </div>
+  </div>
+
+  <!-- ==================== 管理员后台 ==================== -->
+  <div id="adminView" class="hidden">
+    <div class="topbar">
+      <span class="brand">项目管理系统 · 管理后台</span>
+      <div class="right">
+        <span class="who" id="adminUserName"></span>
+        <span class="pill pill-admin">管理员</span>
+        <button class="btn btn-outline-secondary btn-sm" onclick="js_showChangePw()">修改密码</button>
+        <button class="btn btn-outline-danger btn-sm" onclick="js_logout()">退出登录</button>
+      </div>
+    </div>
+
+    <div class="layout">
+      <!-- ================= 左侧菜单 ================= -->
+      <aside class="sidebar">
+        <div class="side-title">管理后台</div>
+        <button class="side-item active" data-mod="a-overview" onclick="js_go('a-overview')"><span class="ico">📊</span><span>概览</span></button>
+        <button class="side-item" data-mod="a-users" onclick="js_go('a-users')"><span class="ico">👥</span><span>用户管理</span></button>
+        <button class="side-item" data-mod="a-projects" onclick="js_go('a-projects')"><span class="ico">📁</span><span>全部项目</span></button>
+        <button class="side-item" data-mod="a-board" onclick="js_go('a-board')"><span class="ico">📈</span><span>月度绩效看板</span></button>
+        <button class="side-item" data-mod="a-settings" onclick="js_go('a-settings')"><span class="ico">⚙️</span><span>系统设置</span></button>
+      </aside>
+
+      <!-- ================= 右侧内容区 ================= -->
+      <main class="content">
+
+        <!-- ===== 模块：概览 ===== -->
+        <section class="module" id="a-overview">
+          <h2 class="page-title">📊 概览</h2>
+          <div class="row g-3">
+            <div class="col-6 col-xl-3"><div class="stat h-100"><div class="n" id="astatUsers">0</div><div class="l">账号总数</div></div></div>
+            <div class="col-6 col-xl-3"><div class="stat h-100"><div class="n" id="astatDevs">0</div><div class="l">研发人员</div></div></div>
+            <div class="col-6 col-xl-3"><div class="stat h-100"><div class="n" id="astatProjects">0</div><div class="l">项目总数</div></div></div>
+            <div class="col-6 col-xl-3"><div class="stat warn h-100"><div class="n" id="astatPending">0</div><div class="l">本期未填报人数</div></div></div>
+          </div>
+          <div id="adminPendingBanner" class="alert alert-warning hidden py-2 mt-3" style="font-size:.88rem;"></div>
+          <div class="tip tip-blue mt-3" style="margin-bottom:0;">
+            💡 从左侧菜单进入各模块：<b>用户管理</b>（增删改账号、设置管理员）、
+            <b>全部项目</b>（审计 / 纠正数据）、<b>月度绩效看板</b>（按人员·部门·月份看绩效并导出 Excel）。
+          </div>
+        </section>
+
+        <!-- ===== 模块：用户管理 ===== -->
+        <section class="module hidden" id="a-users">
+          <h2 class="page-title">👥 用户管理</h2>
+          <div class="card mb-0">
+            <div class="card-header">
+              <span>账号列表 <span class="sub">每 20 秒自动刷新</span></span>
+              <div>
+                <button class="btn btn-outline-secondary btn-sm" onclick="loadUsers()">↻ 刷新</button>
+                <button class="btn btn-primary btn-sm" onclick="js_showUserForm()">+ 添加用户</button>
+              </div>
+            </div>
+            <div class="card-body">
+        <!-- 用户筛选工具条 -->
+        <div class="filter-bar">
+          <div class="row g-2 align-items-end">
+            <div class="col-md-4">
+              <label class="form-label">🔍 关键字</label>
+              <input type="text" class="form-control form-control-sm" id="ufKeyword"
+                     placeholder="姓名 / 手机号 / 部门 / 职位" oninput="applyUserFilter()" />
+            </div>
+            <div class="col-6 col-md-3">
+              <label class="form-label">角色</label>
+              <select class="form-select form-select-sm" id="ufRole" onchange="applyUserFilter()">
+                <option value="">全部角色</option>
+                <option value="admin">管理员</option>
+                <option value="dev">普通研发</option><option value="manager1">一级负责人</option><option value="manager2">二级负责人</option><option value="manager3">三级负责人</option>
+              </select>
+            </div>
+            <div class="col-6 col-md-3">
+              <label class="form-label">部门</label>
+              <select class="form-select form-select-sm" id="ufDept" onchange="applyUserFilter()">
+                <option value="">全部部门</option>
+              </select>
+            </div>
+          </div>
+          <div class="mt-2 d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <span class="muted" id="userFilterSummary" style="font-size:.82rem;"></span>
+            <button class="btn btn-outline-secondary btn-sm" onclick="js_resetUserFilter()">重置筛选</button>
+          </div>
+        </div>
+        <div id="userList">加载中…</div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ===== 模块：全部项目 ===== -->
+        <section class="module hidden" id="a-projects">
+          <h2 class="page-title">📁 全部项目</h2>
+          <div class="card mb-0">
+            <div class="card-header">
+              <span>所有研发人员的项目 <span class="sub">用于审计 / 纠正数据</span></span>
+              <button class="btn btn-outline-secondary btn-sm" onclick="loadAllProjects()">↻ 刷新</button>
+            </div>
+            <div class="card-body">
+        <div class="tip">管理员同样受月度规则限制：只能填报 <b>上一个月</b>（<b id="adminPeriodLabel">-</b>）的进度与事项，历史月份不可修改。</div>
+
+        <!-- 项目筛选工具条 -->
+        <div class="filter-bar">
+          <div class="row g-2 align-items-end">
+            <div class="col-md-2">
+              <label class="form-label">🔍 关键字</label>
+              <input type="text" class="form-control form-control-sm" id="afKeyword"
+                     placeholder="编码 / 名称" oninput="applyAdminProjectFilter()" />
+            </div>
+            <div class="col-6 col-md-2">
+              <label class="form-label">项目编码</label>
+              <select class="form-select form-select-sm" id="afCode" onchange="applyAdminProjectFilter()">
+                <option value="">全部编码</option>
+              </select>
+            </div>
+            <div class="col-6 col-md-2">
+              <label class="form-label">归属人</label>
+              <select class="form-select form-select-sm" id="afOwner" onchange="applyAdminProjectFilter()">
+                <option value="">全部人员</option>
+              </select>
+            </div>
+            <div class="col-6 col-md-2">
+              <label class="form-label">项目类别</label>
+              <select class="form-select form-select-sm" id="afCategory" onchange="applyAdminProjectFilter()">
+                <option value="">全部类别</option>
+                <option value="market">市场项目</option>
+                <option value="self">自研项目</option>
+              </select>
+            </div>
+            <div class="col-6 col-md-2">
+              <label class="form-label">填报状态</label>
+              <select class="form-select form-select-sm" id="afStatus" onchange="applyAdminProjectFilter()">
+                <option value="">全部状态</option>
+                <option value="filled">本期已填报</option>
+                <option value="pending">本期未填报</option>
+              </select>
+            </div>
+            <div class="col-6 col-md-2">
+              <label class="form-label">排序</label>
+              <select class="form-select form-select-sm" id="afSort" onchange="applyAdminProjectFilter()">
+                <option value="default">默认排序</option>
+                <option value="pending">待填报优先</option>
+                <option value="progress_desc">进度 高→低</option>
+                <option value="progress_asc">进度 低→高</option>
+              </select>
+            </div>
+          </div>
+          <div class="mt-2 d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <span class="muted" id="adminFilterSummary" style="font-size:.82rem;"></span>
+            <button class="btn btn-outline-secondary btn-sm" onclick="js_resetAdminProjectFilter()">重置筛选</button>
+          </div>
+        </div>
+
+        <div id="allProjectList">加载中…</div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ===== 模块：月度绩效看板 ===== -->
+        <section class="module hidden" id="a-board">
+          <h2 class="page-title">📈 月度绩效看板</h2>
+          <div class="card mb-0">
+            <div class="card-header">
+              <span>研发人员月度绩效 <span class="sub">绩效按"月"分别统计</span></span>
+              <div>
+                <button class="btn btn-success btn-sm" onclick="js_exportPerformance(false)">⬇ 导出全部 Excel</button>
+                <button class="btn btn-outline-success btn-sm" onclick="js_exportPerformance(true)">⬇ 导出当前人员</button>
+              </div>
+            </div>
+            <div class="card-body">
+
+        <div class="filter-bar">
+          <div class="row g-2 align-items-end">
+            <div class="col-md-4">
+              <label class="form-label">选择人员</label>
+              <select class="form-select" id="boardUserSelect" onchange="js_renderBoard()"></select>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label">部门</label>
+              <select class="form-select" id="boardDeptSelect" onchange="js_loadBoard()">
+                <option value="">全部部门</option>
+              </select>
+            </div>
+            <div class="col-md-2">
+              <label class="form-label">年份</label>
+              <select class="form-select" id="boardYearSelect" onchange="js_loadBoard()"></select>
+            </div>
+            <div class="col-md-2">
+              <label class="form-label">月份</label>
+              <select class="form-select" id="boardMonthSelect" onchange="js_renderBoard()"></select>
+            </div>
+          </div>
+          <div class="mt-2 muted" id="boardWeights" style="font-size:.82rem;"></div>
+        </div>
+
+        <div class="section-title">当月明细</div>
+        <div id="boardResult"><p class="muted">请选择人员后查看该月绩效。</p></div>
+
+        <div class="section-title" id="boardYearTitle">全年逐月绩效</div>
+        <div id="boardMonthsTable"></div>
+
+        <div class="section-title" id="boardDeptTitle">部门绩效汇总</div>
+        <div id="boardDeptTable"></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ===== 模块：系统设置 ===== -->
+        <section class="module hidden" id="a-settings">
+          <h2 class="page-title">⚙️ 系统设置</h2>
+          <div class="card mb-0" style="max-width:640px;">
+            <div class="card-header">绩效核算权重</div>
+            <div class="card-body">
+              <p class="muted" style="font-size:.87rem;">
+                绩效总分 = 市场项目平均完成率 × <b>市场权重</b> ＋ 自研项目平均完成率 × <b>自研权重</b>。<br>
+                系统默认两者各 <b>30%</b>（即满分 60 分），可按贵司考核规则自行调整；改动后<b>所有看板与导出立即按新权重计算</b>。
+              </p>
+              <div class="row g-3">
+                <div class="col-6">
+                  <label class="form-label">市场项目权重（%）</label>
+                  <input type="number" class="form-control" id="setMarketW" min="0" max="100" step="1"
+                         oninput="updateSetPreview()" />
+                </div>
+                <div class="col-6">
+                  <label class="form-label">自研项目权重（%）</label>
+                  <input type="number" class="form-control" id="setSelfW" min="0" max="100" step="1"
+                         oninput="updateSetPreview()" />
+                </div>
+              </div>
+              <div class="tip tip-blue mt-3" id="setPreview">满分：—</div>
+              <button class="btn btn-primary mt-3" onclick="js_saveSettings()">保存权重</button>
+              <button class="btn btn-outline-secondary mt-3 ms-2" onclick="js_resetSettings()">恢复默认 30% / 30%</button>
+            </div>
+          </div>
+        </section>
+
+      </main>
+    </div>
+  </div>
+</div>
+
+<!-- ================= 项目 表单（模态） ================= -->
+<div class="modal fade" id="projectModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form onsubmit="return js_saveProject(event)">
+        <div class="modal-header"><h5 class="modal-title" id="projectModalTitle">添加项目</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label">项目编码 <span class="text-danger">*</span></label>
+            <input type="text" class="form-control" id="projectCode" placeholder="如：XM-2026-001" />
+          </div>
+          <div class="mb-3">
+            <label class="form-label">项目名称 <span class="text-danger">*</span></label>
+            <input type="text" class="form-control" id="projectName" />
+          </div>
+          <div class="mb-3">
+            <label class="form-label">项目类别 <span class="text-danger">*</span></label>
+            <select class="form-select" id="projectCategory">
+              <option value="market">市场项目</option>
+              <option value="self">自研项目</option>
+            </select>
+          </div>
+          <div class="row g-2">
+            <div class="col-6">
+              <label class="form-label">项目起始时间 <span class="text-danger">*</span></label>
+              <input type="date" class="form-control" id="projectStart" />
+            </div>
+            <div class="col-6">
+              <label class="form-label">项目交付时间 <span class="text-danger">*</span></label>
+              <input type="date" class="form-control" id="projectDelivery" />
+            </div>
+          </div>
+          <div class="mt-3">
+            <label class="form-label">项目任务 <span class="muted" style="font-weight:400;">（选填，可多行）</span></label>
+            <textarea class="form-control" id="projectTasks" rows="4"
+                      placeholder="填写本项目的主要任务 / 交付内容，例如：&#10;1. 完成 XX 模块开发与自测&#10;2. 完成 XX 认证测试&#10;3. 输出 XX 技术文档"></textarea>
+          </div>
+          <div class="row g-2 mt-3"><label class="col-6">状态<select class="form-select" id="projectStatus"><option value="planning">未开始</option><option value="active">进行中</option><option value="paused">已暂停</option><option value="done">已完成</option></select></label><label class="col-6">优先级<select class="form-select" id="projectPriority"><option value="normal">普通</option><option value="low">低</option><option value="high">高</option><option value="urgent">紧急</option></select></label></div><div class="mt-3" id="projectProgressWrap">
+            <label class="form-label" id="projectProgressLabel">本期进度（%）</label>
+            <input type="number" class="form-control" id="projectProgress" min="0" max="100" placeholder="0 ~ 100，如 80" />
+          </div>
+          <div class="tip tip-blue mt-3 hidden" id="projectProgressHint" style="margin-bottom:0;">
+            提示：项目进度与事项请用列表里的「<b>填进度</b>／<b>保存本期事项</b>」，且只能填报上一个月。
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+          <button type="submit" class="btn btn-primary">保存</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- ================= 月度进度填报 模态 ================= -->
+<div class="modal fade" id="progressModal" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <form onsubmit="return js_saveProgress(event)">
+        <div class="modal-header"><h5 class="modal-title">填报本期进度与事项</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+        <div class="modal-body">
+          <p class="mb-3"><b id="pmProjectName"></b> <span class="muted" id="pmProjectCode"></span></p>
+          <div class="tip">
+            📅 每月只能填报 <b>上一个月</b>。本次可填报：<b id="pmPeriodLabel"></b>。<span id="pmLockNote"></span>
+          </div>
+          <div class="row g-2 align-items-end mb-3">
+            <div class="col-md-4">
+              <label class="form-label">填报月份</label>
+              <input type="text" class="form-control" id="pmPeriod" readonly />
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">当月进度（%）<span class="text-danger">*</span></label>
+              <input type="number" class="form-control" id="pmProgress" min="0" max="100" placeholder="0 ~ 100" />
+            </div>
+            <div class="col-md-4">
+              <button type="submit" class="btn btn-primary w-100">保存进度与事项</button>
+            </div>
+          </div>
+          <div class="row g-2 mb-3">
+            <div class="col-md-6">
+              <label class="form-label">本期完成事项</label>
+              <textarea class="form-control" id="pmDone" rows="3" placeholder="填写本期已完成的事项"></textarea>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">未完成事项</label>
+              <textarea class="form-control" id="pmUndone" rows="3" placeholder="填写本期未完成 / 待办事项"></textarea>
+            </div>
+          </div>
+          <div class="section-title" id="pmHistoryTitle">各月进度（只读）</div>
+          <div id="pmHistory"></div>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- ================= 用户 表单（模态，管理员） ================= -->
+<div class="modal fade" id="userModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form onsubmit="return js_saveUser(event)">
+        <div class="modal-header"><h5 class="modal-title" id="userModalTitle">添加用户</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label">姓名 <span class="text-danger">*</span></label>
+            <input type="text" class="form-control" id="userName" />
+          </div>
+          <div class="mb-3">
+            <label class="form-label">手机号（登录账号）<span class="text-danger">*</span></label>
+            <input type="text" class="form-control" id="userPhone" />
+          </div>
+          <div class="row g-2">
+            <div class="col-6">
+              <label class="form-label">一级部门</label>
+              <input type="text" class="form-control" id="userDept" />
+            </div>
+          <div class="mb-3"><label class="form-label" for="userDept2">二级部门</label><input class="form-control" id="userDept2" placeholder="例如：软件部"></div>
+          <div class="mb-3"><label class="form-label" for="userDept3">三级部门</label><input class="form-control" id="userDept3" placeholder="例如：平台组"></div>
+
+
+            <div class="col-6">
+              <label class="form-label">职位</label>
+              <input type="text" class="form-control" id="userPos" />
+            </div>
+          </div>
+          <div class="mt-3">
+            <label class="form-label">角色权限</label>
+            <select class="form-select mb-2" id="userAdmin">
+              <option value="false">普通用户</option>
+              <option value="true">管理员（可管理全部数据）</option>
+            </select>
+            <label class="form-label" for="userManager">负责人角色</label>
+            <select class="form-select" id="userManager">
+              <option value="0">非部门负责人</option>
+              <option value="1">一级负责人</option>
+              <option value="2">二级负责人</option>
+              <option value="3">三级负责人</option>
+            </select>
+            <div class="muted mt-1" style="font-size:.78rem;">
+              选择负责人角色即启用对应层级权限；一级管理一级部门，二级管理二级部门及其下属，三级管理三级部门。
+            </div>
+          </div>
+          <div class="mt-3">
+            <label class="form-label">设置 / 重置密码 <span class="muted" style="font-weight:400;">（留空保持原密码；填写后该用户下次登录需重设）</span></label>
+            <div class="input-group">
+              <input type="password" class="form-control" id="userPassword" placeholder="留空保持不变" />
+              <button class="btn btn-outline-secondary" type="button" onclick="js_setPwdDefault()">重置为123456</button>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+          <button type="submit" class="btn btn-primary">保存</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="forgotPasswordModal" tabindex="-1" aria-labelledby="forgotPasswordTitle"><div class="modal-dialog"><div class="modal-content">
+<div class="modal-header"><h5 id="forgotPasswordTitle" class="modal-title">忘记密码</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="关闭"></button></div>
+<div class="modal-body"><p>请联系系统管理员，提供姓名和登录手机号，由管理员核实身份后重置密码。</p><ol><li>管理员在「用户管理 → 编辑用户 → 设置 / 重置密码」中设置临时密码。</li><li>使用临时密码登录，系统会要求你设置自己的新密码。</li></ol><p class="muted">当前采用管理员协助找回，尚未开通短信或邮件验证码自助找回。</p></div>
+<div class="modal-footer"><button type="button" class="btn btn-primary" data-bs-dismiss="modal">返回登录</button></div></div></div></div>
+<!-- ================= 修改密码 模态 ================= -->
+<div class="modal fade" id="changePwModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form onsubmit="return js_submitChangePw(event)">
+        <div class="modal-header"><h5 class="modal-title">修改密码</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+        <div class="modal-body">
+          <div class="mb-3 hidden" id="cpAccountWrap"><label class="form-label" for="cpAccount">手机号 / 登录账号</label><input class="form-control" id="cpAccount" autocomplete="username"></div>
+          <div class="mb-3">
+            <label class="form-label">当前密码 <span class="text-danger">*</span></label>
+            <div class="input-group">
+              <input type="password" class="form-control" id="cpOld" placeholder="请输入当前使用的密码" autocomplete="current-password" />
+              <button class="btn btn-outline-secondary" type="button" onclick="js_togglePwd('cpOld', this)">👁</button>
+            </div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">新密码 <span class="text-danger">*</span></label>
+            <div class="input-group">
+              <input type="password" class="form-control" id="cpNew" placeholder="至少 6 位" autocomplete="new-password" />
+              <button class="btn btn-outline-secondary" type="button" onclick="js_togglePwd('cpNew', this)">👁</button>
+            </div>
+          </div>
+          <div class="mb-0">
+            <label class="form-label">确认新密码 <span class="text-danger">*</span></label>
+            <div class="input-group">
+              <input type="password" class="form-control" id="cpNew2" placeholder="请再次输入新密码" autocomplete="new-password" />
+              <button class="btn btn-outline-secondary" type="button" onclick="js_togglePwd('cpNew2', this)">👁</button>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+          <button type="submit" class="btn btn-primary">确认修改</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script src="/static/vendor/bootstrap.bundle.min.js"></script>
+<script>
+// ===================================================================
+// 全局状态
+// ===================================================================
+var currentUser = null;
+var projectList = [];        // 研发人员：自己的项目
+var adminProjectList = [];   // 管理员：全部项目
+var allowedPeriod = { year: 0, month: 0, label: '' };
+var editingProjectId = null;
+var editingUserId = null;
+var progressProject = null;
+var boardData = [];
+var boardYear = 0;
+var pendingIds = [];
+var usersCache = [];
+var usersTimer = null;
+var meTimer = null;
+
+function $(id){ return document.getElementById(id); }
+function esc(s){
+  return String(s == null ? '' : s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+function trunc(s, n){
+  s = String(s == null ? '' : s).trim();
+  if (!s) return '';
+  return s.length > n ? s.slice(0, n) + '…' : s;
+}
+function ymKey(y, m){ return y + '-' + (m < 10 ? '0' + m : '' + m); }
+function toast(msg, type){
+  type = type || 'success';
+  var colors = { success:'#2e7d63', danger:'#b0473f', info:'#1b2743', warning:'#a9762a' };
+  var el = document.createElement('div');
+  el.className = 'alert alert-dismissible fade show';
+  el.style.borderLeft = '5px solid ' + (colors[type] || colors.info);
+  el.innerHTML = esc(msg) + '<button type="button" class="btn-close" data-bs-dismiss="alert"></button>';
+  $('toastWrap').appendChild(el);
+  setTimeout(function(){ el.remove(); }, 4000);
+}
+function js_togglePwd(id, btn){
+  var inp = $(id);
+  if (inp.type === 'text'){ inp.type = 'password'; btn.textContent = '🔒'; }
+  else { inp.type = 'text'; btn.textContent = '👁'; }
+}
+async function api(method, url, body){
+  var opt = { method: method, headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin' };
+  if (body !== undefined) opt.body = JSON.stringify(body);
+  var res = await fetch(url, opt);
+  var data = null;
+  try { data = await res.json(); } catch (e) { data = { ok:false, error:'服务器返回异常' }; }
+  if (res.status === 401) data.unauthorized = true;
+  return data;
+}
+function emptyState(icon, text){
+  return '<div class="empty-state"><div class="big">' + icon + '</div>' + esc(text) + '</div>';
+}
+
+// ===================================================================
+// 启动 / 视图切换
+// ===================================================================
+async function init(){
+  var me = await api('GET', '/api/me');
+  if (me && me.ok){ currentUser = me.user; enterByRole(); }
+  else { showLogin(); }
+}
+function hideAll(){
+  ['loginView','changePwView','engineerView','adminView'].forEach(function(id){ $(id).classList.add('hidden'); });
+}
+function showLogin(){
+  stopMeSync(); stopUsersAutoRefresh();
+  hideAll();
+  $('loginView').classList.remove('hidden');
+  js_switchTab('login');
+}
+function enterByRole(){
+  startMeSync();
+  if (currentUser.is_admin){
+    $('adminUserName').textContent = currentUser.name || '';
+    renderAdmin();
+  } else {
+    renderEngineer();
+    if (currentUser.must_change_password){ hideAll(); $('changePwView').classList.remove('hidden'); }
+  }
+}
+
+// ===================================================================
+// 登录 / 注册 / 改密 / 退出
+// ===================================================================
+function js_switchTab(which){
+  if (which === 'login'){
+    $('loginForm').classList.remove('hidden'); $('registerForm').classList.add('hidden');
+    $('tabLoginBtn').classList.add('active'); $('tabRegisterBtn').classList.remove('active');
+  } else {
+    $('loginForm').classList.add('hidden'); $('registerForm').classList.remove('hidden');
+    $('tabLoginBtn').classList.remove('active'); $('tabRegisterBtn').classList.add('active');
+  }
+}
+async function js_register(e){
+  e.preventDefault();
+  var name = $('regName').value.trim(), phone = $('regPhone').value.trim();
+  var pw = $('regPassword').value, pw2 = $('regPassword2').value;
+  if (!name){ toast('请填写姓名', 'warning'); return false; }
+  if (!phone){ toast('请填写手机号', 'warning'); return false; }
+  if (pw.length < 6){ toast('密码至少 6 位', 'warning'); return false; }
+  if (pw !== pw2){ toast('两次输入的密码不一致', 'danger'); return false; }
+  var r = await api('POST', '/api/register', { name:name, phone:phone, password:pw });
+  if (!r.ok){ toast(r.error || '注册失败', 'danger'); return false; }
+  toast('注册成功，请登录', 'success');
+  js_switchTab('login');
+  $('loginPhone').value = phone; $('loginPassword').value = '';
+  return false;
+}
+async function js_login(e){
+  e.preventDefault();
+  var phone = $('loginPhone').value.trim(), pw = $('loginPassword').value;
+  if (!phone || !pw){ toast('请输入手机号或管理员账号及密码', 'warning'); return false; }
+  var r = await api('POST', '/api/login', { phone:phone, password:pw });
+  if (!r.ok){ toast(r.error || '登录失败', 'danger'); return false; }
+  currentUser = r.user;
+  $('loginPassword').value = '';
+  enterByRole();
+  return false;
+}
+var savingFirstPassword = false;
+async function js_changePassword(e){
+  e.preventDefault();
+  if (savingFirstPassword) return false;
+  var p1 = $('pw1').value, p2 = $('pw2').value;
+  if (p1.length < 6){ toast('新密码至少 6 位', 'warning'); return false; }
+  if (p1 !== p2){ toast('两次输入的新密码不一致', 'danger'); return false; }
+  savingFirstPassword = true;
+  var button = e.target.querySelector('button[type="submit"]');
+  if(button) button.disabled = true;
+  try {
+    var me = await api('GET', '/api/me');
+    if(!me.ok || !me.user || !currentUser || me.user.id !== currentUser.id){
+      $('pw1').value=''; $('pw2').value='';
+      currentUser=null; showLogin();
+      toast('登录状态已变化，请重新登录后设置密码','warning'); return false;
+    }
+    currentUser=me.user;
+    if(!currentUser.must_change_password){
+      $('pw1').value=''; $('pw2').value='';
+      enterByRole();
+      toast('首次密码已设置，如需再次修改，请使用「修改密码」','warning'); return false;
+    }
+    var r = await api('POST', '/api/change-password', { new_password:p1 });
+    if (!r.ok){ toast(r.error || '修改失败', 'danger'); return false; }
+    currentUser.must_change_password = false;
+    $('pw1').value = ''; $('pw2').value = '';
+    toast('密码已更新', 'success');
+    enterByRole();
+  } finally {
+    savingFirstPassword = false;
+    if(button) button.disabled = false;
+  }
+  return false;
+}
+function js_forgotPassword(){new bootstrap.Modal($('forgotPasswordModal')).show();}
+function js_showChangePw(){
+  $('cpAccountWrap').classList.toggle('hidden', !!currentUser);
+  $('cpAccount').value=$('loginPhone').value.trim();
+  $('cpOld').value = ''; $('cpNew').value = ''; $('cpNew2').value = '';
+  new bootstrap.Modal($('changePwModal')).show();
+}
+async function js_submitChangePw(e){
+  e.preventDefault();
+  var o = $('cpOld').value, n1 = $('cpNew').value, n2 = $('cpNew2').value;
+  if (!o){ toast('请输入当前密码', 'warning'); return false; }
+  if (n1.length < 6){ toast('新密码至少 6 位', 'warning'); return false; }
+  if (n1 !== n2){ toast('两次输入的新密码不一致', 'danger'); return false; }
+  var fromLogin = !currentUser;
+  var authenticatedUser = null;
+  if(fromLogin){
+    var account=$('cpAccount').value.trim();
+    if(!account){toast('请输入手机号或登录账号','warning');return false;}
+    var login=await api('POST','/api/login',{phone:account,password:o});
+    if(!login.ok){toast(login.error||'账号或当前密码不正确','danger');return false;}
+    authenticatedUser=login.user;
+  }
+  var r = await api('POST', '/api/change-password', { old_password:o, new_password:n1 });
+  if (!r.ok){ toast(r.error || '修改失败', 'danger'); return false; }
+  bootstrap.Modal.getInstance($('changePwModal')).hide();
+  $('cpOld').value = ''; $('cpNew').value = ''; $('cpNew2').value = '';
+  toast('密码已修改，请牢记新密码', 'success');
+  if(fromLogin){currentUser=authenticatedUser;currentUser.must_change_password=false;enterByRole();}
+  return false;
+}
+async function js_logout(){
+  await api('POST', '/api/logout');
+  currentUser = null; projectList = []; adminProjectList = []; boardData = []; usersCache = [];
+  showLogin();
+}
+
+// ===================================================================
+// 研发人员主页
+// ===================================================================
+async function renderEngineer(){
+  hideAll();
+  $('engineerView').classList.remove('hidden');
+  $('engUserName').textContent = currentUser.name || '';
+  $('engName').value = currentUser.name || '';
+  $('engPhone').value = currentUser.phone || '';
+  $('engDept').value = currentUser.department || '';
+  $('engDept2').value=currentUser.department2||''; $('engDept3').value=currentUser.department3||''; updateProfileDepartmentPath();
+  $('engPos').value = currentUser.position || '';
+  await loadMyProjects();          // 必备数据（统计 / 项目列表 / 月度矩阵）
+  toggleDeptMenu();                // 部门负责人菜单组（普通研发隐藏）
+  showModuleOnly(lastModule());    // 回到上次所在模块
+}
+function updateProfileDepartmentPath(){ $('engDeptPath').textContent=[$('engDept').value.trim(),$('engDept2').value.trim(),$('engDept3').value.trim()].filter(Boolean).join(' / ') || '未填写'; }
+async function js_saveProfile(){
+  var dept = $('engDept').value.trim(), pos = $('engPos').value.trim();
+  if (!dept){ toast('请填写部门', 'warning'); return; }
+  if (!pos){ toast('请填写职位', 'warning'); return; }
+  var r = await api('POST', '/api/profile', { department:dept, department2:$('engDept2').value.trim(), department3:$('engDept3').value.trim(), position:pos });
+  if (!r.ok){ toast(r.error || '保存失败', 'danger'); return; }
+  currentUser = r.user; updateProfileDepartmentPath();
+  toast('个人信息已保存', 'success');
+}
+
+async function loadMyProjects(){
+  var r = await api('GET', '/api/projects');
+  if (!r.ok){ toast(r.error || '加载失败', 'danger'); return; }
+  projectList = r.projects || [];
+  fillCodeSelect('fCode', projectList);
+  if (r.allowed){ allowedPeriod = r.allowed; }
+  $('engPeriodLabel').textContent = allowedPeriod.label || '-';
+  $('statPeriod').textContent = allowedPeriod.label || '-';
+  await loadPendingBanner();
+  applyProjectFilter();
+  renderMyMonthlyProgress();
+}
+function updateEngStats(){
+  $('statTotal').textContent = projectList.length;
+  var filled = projectList.filter(function(p){ return pendingIds.indexOf(p.id) === -1; }).length;
+  $('statFilled').textContent = filled;
+  $('statPending').textContent = pendingIds.length;
+}
+
+// ================= 项目筛选（关键字 / 类别 / 状态 / 排序） =================
+function hasFilledThisMonth(p){
+  var key = ymKey(allowedPeriod.year, allowedPeriod.month);
+  return !!(p.progress_map && p.progress_map[key] !== undefined);
+}
+// 填充「项目编码」下拉（去重 / 排序 / 保留已选）
+function fillCodeSelect(selId, list){
+  var sel = $(selId);
+  if (!sel) return;
+  var prev = sel.value;
+  var codes = [];
+  (list || []).forEach(function(p){
+    var c = (p.project_code || '').trim();
+    if (c && codes.indexOf(c) === -1) codes.push(c);
+  });
+  codes.sort();
+  sel.innerHTML = '<option value="">全部编码</option>';
+  codes.forEach(function(c){
+    var o = document.createElement('option'); o.value = c; o.textContent = c;
+    sel.appendChild(o);
+  });
+  if (prev && codes.indexOf(prev) !== -1) sel.value = prev;
+  else sel.value = '';          // 已选编码不存在时，显式回落到"全部编码"
+}
+
+function getFilteredProjects(){
+  var kw = ($('fKeyword').value || '').trim().toLowerCase();
+  var code = $('fCode').value;
+  var cat = $('fCategory').value;
+  var st = $('fStatus').value;
+  var sort = $('fSort').value;
+  var list = projectList.filter(function(p){
+    if (code && (p.project_code || '').trim() !== code) return false;
+    if (kw){
+      var hay = ((p.project_code || '') + ' ' + (p.project_name || '') + ' ' + (p.tasks || '')).toLowerCase();
+      if (hay.indexOf(kw) === -1) return false;
+    }
+    if (cat && p.category !== cat) return false;
+    if (st === 'filled' && !hasFilledThisMonth(p)) return false;
+    if (st === 'pending' && hasFilledThisMonth(p)) return false;
+    return true;
+  });
+  if (sort === 'pending'){
+    // 待填报优先
+    list.sort(function(a, b){ return (hasFilledThisMonth(a) ? 1 : 0) - (hasFilledThisMonth(b) ? 1 : 0); });
+  } else if (sort === 'progress_desc'){
+    list.sort(function(a, b){
+      return (b.current_progress == null ? -1 : b.current_progress) - (a.current_progress == null ? -1 : a.current_progress);
+    });
+  } else if (sort === 'progress_asc'){
+    list.sort(function(a, b){
+      return (a.current_progress == null ? -1 : a.current_progress) - (b.current_progress == null ? -1 : b.current_progress);
+    });
+  }
+  return list;
+}
+function applyProjectFilter(){
+  if (!currentUser || currentUser.is_admin) return;   // 仅用于研发人员视图
+  var list = getFilteredProjects();
+  renderProjectTable($('engProjectList'), list, false);
+  var sum = $('filterSummary');
+  if (sum){
+    var extra = (list.length !== projectList.length) ? '（已按条件筛选）' : '';
+    sum.innerHTML = '共 <b>' + projectList.length + '</b> 个项目，当前显示 <b>' + list.length + '</b> 个' + extra;
+  }
+  updateEngStats();
+}
+function js_resetProjectFilter(){
+  $('fKeyword').value = ''; $('fCode').value = '';
+  $('fCategory').value = '';
+  $('fStatus').value = '';
+  $('fSort').value = 'default';
+  applyProjectFilter();
+}
+
+// 未填报提醒
+async function loadPendingBanner(){
+  var box = $('engPendingBanner');
+  var r = await api('GET', '/api/pending');
+  pendingIds = [];
+  if (!r.ok || r.admin || !r.pending || !r.pending.length){
+    box.classList.add('hidden');
+    return;
+  }
+  pendingIds = r.pending.map(function(p){ return p.id; });
+  var filtered = ($('fStatus').value === 'pending');
+  box.classList.remove('hidden');
+  box.innerHTML = '⚠️ <b>' + esc(r.label) + '</b> 的进度还没填完：你有 <b>' + r.pending.length + '</b> 个项目未填报。'
+    + '<button class="btn btn-sm btn-warning ms-2" onclick="js_togglePendingFilter()">'
+    + (filtered ? '显示全部项目' : '只看未填报') + '</button>';
+}
+function js_togglePendingFilter(){
+  var turnOn = ($('fStatus').value !== 'pending');
+  $('fStatus').value = turnOn ? 'pending' : '';
+  showModuleOnly('m-projects');     // 自动跳到"我的项目"模块
+  applyProjectFilter();
+  loadPendingBanner();
+}
+
+// ===================================================================
+// 项目列表渲染：研发人员=卡片；管理员=紧凑表格
+// ===================================================================
+function renderProjectTable(box, list, isAdmin){
+  if (isAdmin){ renderAdminProjectTable(box, list); return; }
+  renderProjectCards(box, list);
+}
+
+// ---- 研发人员：卡片式（信息 + 本期填报） ----
+function renderProjectCards(box, list){
+  if (!list.length){
+    box.innerHTML = emptyState('📁', '还没有项目，点击右上角「+ 添加项目」开始。');
+    return;
+  }
+  var key = ymKey(allowedPeriod.year, allowedPeriod.month);
+  var html = '<div class="pcard-grid">';   // 横向网格：一行多列
+  list.forEach(function(p){
+    var isMarket = p.category === 'market';
+    var catBadge = isMarket
+      ? '<span class="badge badge-market">市场项目</span>'
+      : '<span class="badge badge-self">自研项目</span>';
+    var prog = (p.progress_map && p.progress_map[key] !== undefined) ? p.progress_map[key] : null;
+    var latest = (p.current_progress === null || p.current_progress === undefined) ? '—' : (p.current_progress + '%');
+    var tm = p.this_month || {};
+    var dId = 'pd_' + p.id, uId = 'pu_' + p.id;
+    var filled = (prog !== null);
+
+    html += '<div class="pcard">'
+      +   '<div class="pcard-head">'
+      +     catBadge
+      +     '<span class="pcard-code">' + esc(p.project_code) + '</span>'
+      +     '<span class="pcard-name">' + esc(p.project_name) + '</span>'
+      +     '<span class="pcard-right">'
+      +       '<span class="muted" style="font-size:.82rem">本期进度</span>'
+      +       '<span class="pcard-progress">' + (filled ? prog + '%' : '未填') + '</span>'
+      +     '</span>'
+      +   '</div>'
+      +   '<div class="pcard-meta">'
+      +     '<span>项目周期：<b>' + esc(p.start_date) + ' ~ ' + esc(p.delivery_date) + '</b></span>'
+      +     '<span>最新进度：<b>' + latest + '</b></span>'
+      +     '<span>本期状态：' + (filled
+              ? '<b style="color:#2e7d63">已填报</b>'
+              : '<b style="color:#a9762a">待填报</b>') + '</span>'
+      +   '</div>'
+      +   '<div class="pcard-tasks">📋 <b>项目任务：</b>'
+      +     ((p.tasks || '').trim() ? esc(p.tasks)
+              : '<span class="muted">未填写（点「编辑项目」可补充）</span>')
+      +   '</div>'
+      +   '<div class="pbar"><i style="width:' + (prog || 0) + '%"></i></div>'
+      +   '<div class="pcard-fill mt-3">'
+      +     '<div class="fill-title">📝 本期填报（' + esc(allowedPeriod.label) + '）</div>'
+      +     '<div class="mb-2">'
+      +       '<textarea class="form-control form-control-sm" rows="2" id="' + dId + '" placeholder="本期完成事项">' + esc(tm.done_items || '') + '</textarea>'
+      +     '</div>'
+      +     '<div>'
+      +       '<textarea class="form-control form-control-sm" rows="2" id="' + uId + '" placeholder="未完成事项">' + esc(tm.undone_items || '') + '</textarea>'
+      +     '</div>'
+      +     '<div class="pcard-actions">'
+      +       '<button class="btn btn-primary btn-sm" onclick="js_saveItems(' + p.id + ')">保存本期事项</button>'
+      +       '<button class="btn btn-success btn-sm" onclick="js_showProgressForm(' + p.id + ',0)">填进度</button>'
+      +       '<button class="btn btn-outline-secondary btn-sm" onclick="js_editProject(' + p.id + ',0)">编辑项目</button>'
+      +       '<button class="btn btn-outline-danger btn-sm ms-auto" onclick="js_deleteProject(' + p.id + ',0)">删除</button>'
+      +     '</div>'
+      +   '</div>'
+      + '</div>';
+  });
+  html += '</div>';            // 关闭网格
+  box.innerHTML = html;
+}
+
+// ---- 管理员：紧凑表格 ----
+function renderAdminProjectTable(box, list, sourceLen){
+  var n = (sourceLen === undefined) ? adminProjectList.length : sourceLen;
+  if (!n){ box.innerHTML = emptyState('📁', '暂无任何项目。'); return; }
+  if (!list.length){ box.innerHTML = emptyState('🔍', '没有符合筛选条件的项目，试试「重置筛选」。'); return; }
+  var key = ymKey(allowedPeriod.year, allowedPeriod.month);
+  var html = '<div class="table-responsive"><table class="table table-hover align-middle"><thead><tr>'
+    + '<th>归属人</th><th>项目编码</th><th>项目名称</th><th>项目任务</th><th>类别</th><th>项目周期</th>'
+    + '<th>本期进度</th><th>最新</th><th>本期事项</th><th style="width:180px">操作</th>'
+    + '</tr></thead><tbody>';
+  list.forEach(function(p){
+    var cat = p.category === 'market'
+      ? '<span class="badge badge-market">市场</span>' : '<span class="badge badge-self">自研</span>';
+    var prog = (p.progress_map && p.progress_map[key] !== undefined)
+      ? ('<b style="color:#1b2743">' + p.progress_map[key] + '%</b>') : '<span class="muted">未填</span>';
+    var latest = (p.current_progress === null || p.current_progress === undefined) ? '<span class="muted">—</span>' : (p.current_progress + '%');
+    var tm = p.this_month || {};
+    var done = trunc(tm.done_items, 18), undone = trunc(tm.undone_items, 18);
+    var items = (done || undone)
+      ? ('<div class="items-cell">'
+          + (done ? '<div class="itm" title="' + esc(tm.done_items) + '"><span class="tag tag-ok">完成</span> ' + esc(done) + '</div>' : '')
+          + (undone ? '<div class="itm" title="' + esc(tm.undone_items) + '"><span class="tag tag-warn">未完成</span> ' + esc(undone) + '</div>' : '')
+        + '</div>')
+      : '<span class="muted">—</span>';
+    html += '<tr>'
+      + '<td>' + esc(p.owner_name || '') + '</td>'
+      + '<td><span class="pcard-code">' + esc(p.project_code) + '</span></td>'
+      + '<td>' + esc(p.project_name) + '</td>'
+      + '<td class="items-cell">' + ((p.tasks || '').trim()
+          ? '<div class="itm" title="' + esc(p.tasks) + '">' + esc(trunc(p.tasks, 24)) + '</div>'
+          : '<span class="muted">—</span>') + '</td>'
+      + '<td>' + cat + '</td>'
+      + '<td class="muted" style="font-size:.82rem">' + esc(p.start_date) + '<br>' + esc(p.delivery_date) + '</td>'
+      + '<td>' + prog + '</td>'
+      + '<td>' + latest + '</td>'
+      + '<td>' + items + '</td>'
+      + '<td>'
+      +   '<button class="btn btn-sm btn-success" onclick="js_showProgressForm(' + p.id + ',1)">填进度</button> '
+      +   '<button class="btn btn-sm btn-outline-primary" onclick="js_editProject(' + p.id + ',1)">编辑</button> '
+      +   '<button class="btn btn-sm btn-outline-danger" onclick="js_deleteProject(' + p.id + ',1)">删除</button>'
+      + '</td></tr>';
+  });
+  html += '</tbody></table></div>';
+  box.innerHTML = html;
+}
+
+// 单独保存"本期完成事项 / 未完成事项"
+async function js_saveItems(id, isAdmin){
+  var dEl = $('pd_' + id), uEl = $('pu_' + id);
+  var r = await api('PUT', '/api/projects/' + id + '/progress', {
+    year: allowedPeriod.year, month: allowedPeriod.month,
+    done_items: dEl ? dEl.value : '', undone_items: uEl ? uEl.value : ''
+  });
+  if (!r.ok){ toast(r.error || '保存失败', 'danger'); return; }
+  toast('本期事项已保存', 'success');
+  if (currentUser.is_admin){ loadAllProjects(); } else { loadMyProjects(); }
+}
+
+// ===================================================================
+// 项目基本信息 新增 / 编辑
+// ===================================================================
+function js_showProjectForm(){
+  editingProjectId = null;
+  $('projectModalTitle').textContent = '添加项目';
+  $('projectCode').value = ''; $('projectName').value = '';
+  $('projectCategory').value = 'market';
+  $('projectStart').value = ''; $('projectDelivery').value = '';
+  $('projectTasks').value = '';
+  $('projectStatus').value = 'active'; $('projectPriority').value = 'normal';
+  $('projectProgress').value = '';
+  $('projectProgressWrap').classList.remove('hidden');
+  $('projectProgressHint').classList.add('hidden');
+  $('projectProgressLabel').textContent = '本期进度（%）—— ' + (allowedPeriod.label || '');
+  new bootstrap.Modal($('projectModal')).show();
+}
+function js_editProject(id, isAdmin){
+  var list = isAdmin ? adminProjectList : projectList;
+  var p = list.filter(function(x){ return x.id === id; })[0];
+  if (!p){ toast('项目不存在', 'danger'); return; }
+  editingProjectId = id;
+  $('projectModalTitle').textContent = '编辑项目信息';
+  $('projectCode').value = p.project_code;
+  $('projectName').value = p.project_name;
+  $('projectCategory').value = p.category;
+  $('projectStart').value = p.start_date;
+  $('projectDelivery').value = p.delivery_date;
+  $('projectTasks').value = p.tasks || '';
+  $('projectStatus').value = p.status || 'active'; $('projectPriority').value = p.priority || 'normal';
+  $('projectProgressWrap').classList.add('hidden');
+  $('projectProgressHint').classList.remove('hidden');
+  new bootstrap.Modal($('projectModal')).show();
+}
+async function js_saveProject(e){
+  e.preventDefault();
+  var body = {
+    project_code: $('projectCode').value.trim(),
+    project_name: $('projectName').value.trim(),
+    category: $('projectCategory').value,
+    start_date: $('projectStart').value,
+    delivery_date: $('projectDelivery').value,
+    tasks: $('projectTasks').value.trim(),
+    status: $('projectStatus').value, priority: $('projectPriority').value
+  };
+  if (!body.project_code){ toast('请填写项目编码', 'warning'); return false; }
+  if (!body.project_name){ toast('请填写项目名称', 'warning'); return false; }
+  if (!body.start_date){ toast('请选择起始时间', 'warning'); return false; }
+  if (!body.delivery_date){ toast('请选择交付时间', 'warning'); return false; }
+
+  var r;
+  if (editingProjectId){
+    r = await api('PUT', '/api/projects/' + editingProjectId, body);
+  } else {
+    var pv = $('projectProgress').value;
+    if (pv !== ''){
+      var n = parseInt(pv, 10);
+      if (isNaN(n) || n < 0 || n > 100){ toast('本期进度需为 0~100 的数字', 'warning'); return false; }
+      body.progress = n;
+    }
+    r = await api('POST', '/api/projects', body);
+  }
+  if (!r.ok){ toast(r.error || '保存失败', 'danger'); return false; }
+  toast(editingProjectId ? '项目已更新' : '项目添加成功', 'success');
+  editingProjectId = null;
+  bootstrap.Modal.getInstance($('projectModal')).hide();
+  if (currentUser.is_admin){ loadAllProjects(); } else { loadMyProjects(); }
+  return false;
+}
+async function js_deleteProject(id, isAdmin){
+  if (!confirm('确定删除该项目？（其所有月度进度与事项也会一并删除）')) return;
+  var r = await api('DELETE', '/api/projects/' + id);
+  if (!r.ok){ toast(r.error || '删除失败', 'danger'); return; }
+  toast('已删除', 'success');
+  if (isAdmin){ loadAllProjects(); } else { loadMyProjects(); }
+}
+
+// ===================================================================
+// 月度进度 + 事项 填报（只能填上一个月）
+// ===================================================================
+function findProject(id, isAdmin){
+  var list = isAdmin ? adminProjectList : projectList;
+  return list.filter(function(x){ return x.id === id; })[0];
+}
+function js_showProgressForm(id, isAdmin){
+  var p = findProject(id, isAdmin);
+  if (!p){ toast('项目不存在', 'danger'); return; }
+  progressProject = p;
+  var key = ymKey(allowedPeriod.year, allowedPeriod.month);
+  $('pmProjectName').textContent = p.project_name;
+  $('pmProjectCode').textContent = '（' + p.project_code + '）';
+  $('pmPeriodLabel').textContent = allowedPeriod.label;
+  $('pmPeriod').value = allowedPeriod.label;
+  var existing = (p.progress_map && p.progress_map[key] !== undefined) ? p.progress_map[key] : '';
+  $('pmProgress').value = existing;
+  var tm = p.this_month || {};
+  $('pmDone').value = tm.done_items || '';
+  $('pmUndone').value = tm.undone_items || '';
+  $('pmLockNote').textContent = existing === '' ? '该月尚未填报，请填写。' : '该月已填报过，再次保存将覆盖。';
+
+  $('pmHistoryTitle').textContent = allowedPeriod.year + ' 年各月进度（只读，仅 ' + allowedPeriod.label + ' 可修改）';
+  var html = '<div class="table-responsive"><table class="table table-sm table-bordered mb-0"><thead><tr>';
+  for (var m = 1; m <= 12; m++) html += '<th class="text-center">' + m + '月</th>';
+  html += '</tr></thead><tbody><tr>';
+  for (var mm = 1; mm <= 12; mm++){
+    var k = ymKey(allowedPeriod.year, mm);
+    var v = (p.progress_map && p.progress_map[k] !== undefined) ? (p.progress_map[k] + '%') : '<span class="muted">—</span>';
+    var cls = (mm === allowedPeriod.month) ? ' class="text-center row-current"' : ' class="text-center"';
+    html += '<td' + cls + '>' + v + '</td>';
+  }
+  html += '</tr></tbody></table></div>';
+  $('pmHistory').innerHTML = html;
+
+  new bootstrap.Modal($('progressModal')).show();
+}
+async function js_saveProgress(e){
+  e.preventDefault();
+  if (!progressProject){ return false; }
+  var v = $('pmProgress').value;
+  if (v === ''){ toast('请填写当月进度', 'warning'); return false; }
+  var n = parseInt(v, 10);
+  if (isNaN(n) || n < 0 || n > 100){ toast('进度需为 0~100 的数字', 'warning'); return false; }
+  var r = await api('PUT', '/api/projects/' + progressProject.id + '/progress',
+                    { year: allowedPeriod.year, month: allowedPeriod.month, progress: n,
+                      done_items: $('pmDone').value, undone_items: $('pmUndone').value });
+  if (!r.ok){ toast(r.error || '保存失败', 'danger'); return false; }
+  toast(r.message || '已保存', 'success');
+  bootstrap.Modal.getInstance($('progressModal')).hide();
+  progressProject = null;
+  if (currentUser.is_admin){ loadAllProjects(); } else { loadMyProjects(); }
+  return false;
+}
+
+// ===================================================================
+// 我的项目月度进度矩阵
+// ===================================================================
+function ensureMyYearSelect(){
+  if ($('myYearSelect').options.length) return;
+  var y0 = allowedPeriod.year || new Date().getFullYear();
+  for (var y = y0; y >= y0 - 3; y--){
+    var o = document.createElement('option'); o.value = y; o.textContent = y + ' 年';
+    $('myYearSelect').appendChild(o);
+  }
+}
+function renderMyMonthlyProgress(){
+  ensureMyYearSelect();
+  var year = parseInt($('myYearSelect').value, 10) || allowedPeriod.year;
+  var box = $('myProgressMatrix');
+  if (!projectList.length){
+    box.innerHTML = emptyState('📊', '还没有项目，先添加项目并填报进度。');
+    return;
+  }
+  var html = '<div class="table-responsive"><table class="table table-bordered matrix">'
+    + '<thead><tr><th style="min-width:190px">项目</th>';
+  for (var m = 1; m <= 12; m++) html += '<th class="text-center">' + m + '月</th>';
+  html += '</tr></thead><tbody>';
+  projectList.forEach(function(p){
+    html += '<tr><td><b>' + esc(p.project_code) + '</b><br>'
+         +  '<span class="muted" style="font-size:.8rem">' + esc(p.project_name) + '</span></td>';
+    for (var mm = 1; mm <= 12; mm++){
+      var k = ymKey(year, mm);
+      var v = (p.progress_map && p.progress_map[k] !== undefined)
+        ? ('<b>' + p.progress_map[k] + '%</b>') : '<span class="muted">—</span>';
+      var cls = (year === allowedPeriod.year && mm === allowedPeriod.month)
+        ? ' class="text-center row-current"' : ' class="text-center"';
+      html += '<td' + cls + '>' + v + '</td>';
+    }
+    html += '</tr>';
+  });
+  html += '</tbody></table></div>'
+    + '<p class="muted mt-2 mb-0" style="font-size:.8rem;">蓝色列为你当前可填报的月份（<b>'
+    + esc(allowedPeriod.label) + '</b>）；其他月份为历史记录，只读。</p>';
+  box.innerHTML = html;
+}
+
+// ===================================================================
+// 管理员后台
+// ===================================================================
+function renderAdmin(){
+  hideAll();
+  $('adminView').classList.remove('hidden');
+  var mod = lastModule();
+  showModuleOnly(mod);
+  loadModuleData(mod);
+}
+// ===================================================================
+// 左侧菜单：模块切换
+// ===================================================================
+var ENG_MODULES = ['m-overview', 'm-profile', 'm-projects', 'm-progress',
+                   'dm-members', 'dm-projects', 'dm-performance'];
+var ADMIN_MODULES = ['a-overview', 'a-users', 'a-projects', 'a-board', 'a-settings'];
+
+// 部门负责人能看到的模块（普通研发看不到 dm-*）
+function engAllowedModules(){
+  var isMgr = !!(currentUser && currentUser.is_manager);
+  return ENG_MODULES.filter(function(m){ return isMgr || m.indexOf('dm-') !== 0; });
+}
+function currentModules(){
+  if (currentUser && currentUser.is_admin) return ADMIN_MODULES;
+  return engAllowedModules();
+}
+// 显示/隐藏左侧「部门负责人」菜单组
+function toggleDeptMenu(){
+  var show = !!(currentUser && currentUser.is_manager && !currentUser.is_admin);
+  document.querySelectorAll('.dm-only').forEach(function(el){
+    el.classList.toggle('hidden', !show);
+  });
+}
+function modKey(){ return (currentUser && currentUser.is_admin) ? 'vivian_mod_admin' : 'vivian_mod_dev'; }
+function lastModule(){
+  var mods = currentModules();
+  try {
+    var v = localStorage.getItem(modKey());
+    return (v && mods.indexOf(v) !== -1) ? v : mods[0];
+  } catch (e) { return mods[0]; }
+}
+// 只切换显示，不加载数据
+function showModuleOnly(mod){
+  // 隐藏全部模块（含另一角色的），再显示目标模块
+  ENG_MODULES.concat(ADMIN_MODULES).forEach(function(id){ var el = $(id); if (el) el.classList.add('hidden'); });
+  var el = $(mod); if (el) el.classList.remove('hidden');
+  document.querySelectorAll('.side-item').forEach(function(b){
+    b.classList.toggle('active', b.getAttribute('data-mod') === mod);
+  });
+  try { localStorage.setItem(modKey(), mod); } catch (e) {}
+}
+// 按模块加载数据
+function loadModuleData(mod){
+  if (mod === 'm-overview' || mod === 'm-projects') loadMyProjects();
+  if (mod === 'm-progress') renderMyMonthlyProgress();
+  if (mod === 'dm-members') loadDeptMembers();
+  if (mod === 'dm-projects') loadDeptProjects();
+  if (mod === 'dm-performance') loadDeptPerformance();
+  if (mod === 'a-overview') loadAdminOverview();
+  if (mod === 'a-users'){ loadUsers(); startUsersAutoRefresh(); } else { stopUsersAutoRefresh(); }
+  if (mod === 'a-projects') loadAllProjects();
+  if (mod === 'a-board') js_loadBoard();
+  if (mod === 'a-settings') loadSettings();
+}
+// 点击左侧菜单
+function js_go(mod){
+  var mods = currentModules();
+  if (mods.indexOf(mod) === -1) mod = mods[0];
+  showModuleOnly(mod);
+  loadModuleData(mod);
+  window.scrollTo(0, 0);
+}
+
+// 管理员概览统计
+async function loadAdminOverview(){
+  var r1 = await api('GET', '/api/users');
+  if (r1.ok && r1.users){
+    usersCache = r1.users;
+    $('astatUsers').textContent = r1.users.length;
+    $('astatDevs').textContent = r1.users.filter(function(u){ return !u.is_admin; }).length;
+  }
+  var r2 = await api('GET', '/api/projects');
+  if (r2.ok && r2.projects){
+    adminProjectList = r2.projects;
+    if (r2.allowed) allowedPeriod = r2.allowed;
+    $('astatProjects').textContent = r2.projects.length;
+  }
+  var r3 = await api('GET', '/api/pending');
+  if (r3.ok && r3.admin && r3.unfilled_users){
+    $('astatPending').textContent = r3.unfilled_users.filter(function(u){ return u.project_count > 0; }).length;
+  }
+  loadAdminPending();
+}
+
+// ---- 用户管理 ----
+async function loadUsers(){
+  var r = await api('GET', '/api/users');
+  if (!r.ok){ toast(r.error || '加载失败', 'danger'); return; }
+  usersCache = r.users || [];
+  // 部门下拉（保留已选）
+  var dprev = $('ufDept').value;
+  var depts = [];
+  usersCache.forEach(function(u){
+    var d = (u.department || '').trim();
+    if (d && depts.indexOf(d) === -1) depts.push(d);
+  });
+  depts.sort();
+  $('ufDept').innerHTML = '<option value="">全部部门</option>';
+  depts.forEach(function(d){
+    var o = document.createElement('option'); o.value = d; o.textContent = d;
+    $('ufDept').appendChild(o);
+  });
+  if (dprev && depts.indexOf(dprev) !== -1) $('ufDept').value = dprev;
+  applyUserFilter();
+}
+function getFilteredUsers(){
+  var kw = ($('ufKeyword').value || '').trim().toLowerCase();
+  var role = $('ufRole').value;
+  var dept = $('ufDept').value;
+  return usersCache.filter(function(u){
+    if (kw){
+      var hay = ((u.name || '') + ' ' + (u.phone || '') + ' ' + (u.department || '') + ' ' + (u.position || '')).toLowerCase();
+      if (hay.indexOf(kw) === -1) return false;
+    }
+    if (role === 'admin' && !u.is_admin) return false;
+    if (role === 'dev' && (u.is_admin || u.is_manager)) return false;
+    if (role.indexOf('manager') === 0 && (!u.is_manager || Number(u.manager_level) !== Number(role.slice(-1)))) return false;
+    if (dept && (u.department || '').trim() !== dept) return false;
+    return true;
+  });
+}
+function applyUserFilter(){
+  var list = getFilteredUsers();
+  renderUserTable(list);
+  var s = $('userFilterSummary');
+  if (s){
+    s.innerHTML = '共 <b>' + usersCache.length + '</b> 个账号，当前显示 <b>' + list.length + '</b> 个'
+      + (list.length !== usersCache.length ? '（已按条件筛选）' : '');
+  }
+}
+function js_resetUserFilter(){
+  $('ufKeyword').value = ''; $('ufRole').value = ''; $('ufDept').value = '';
+  applyUserFilter();
+}
+function renderUserTable(list){
+  var box = $('userList');
+  if (!usersCache.length){ box.innerHTML = emptyState('👥', '暂无用户。'); return; }
+  if (!list.length){ box.innerHTML = emptyState('🔍', '没有符合筛选条件的账号，试试「重置筛选」。'); return; }
+  var html = '<div class="table-responsive"><table class="table table-hover align-middle"><thead><tr>'
+    + '<th>姓名</th><th>手机号</th><th>部门</th><th>职位</th><th>角色</th><th>须改密</th><th>创建时间</th><th style="width:340px">操作</th>'
+    + '</tr></thead><tbody>';
+  list.forEach(function(u){
+    var role = u.is_admin ? '<span class="pill pill-admin">管理员</span>'
+             : (u.is_manager ? '<span class="pill pill-admin">' + managerRoleName(u.manager_level) + '</span>'
+                             : '<span class="pill pill-dev">研发</span>');
+    if(u.is_admin && u.is_manager) role += ' <span class="pill pill-admin">'+managerRoleName(u.manager_level)+'</span>';
+    var must = u.must_change_password ? '<span class="tag tag-warn">待改密</span>' : '<span class="muted">否</span>';
+    html += '<tr><td><b>' + esc(u.name) + '</b></td><td>' + esc(u.phone) + '</td>'
+      + '<td>' + (u.department ? esc([u.department,u.department2,u.department3].filter(Boolean).join(' / ')) : '<span class="muted">—</span>') + '</td>'
+      + '<td>' + (u.position ? esc(u.position) : '<span class="muted">—</span>') + '</td>'
+      + '<td>' + role + '</td><td>' + must + '</td>'
+      + '<td class="muted" style="font-size:.82rem">' + esc((u.created_at || '').slice(0,10)) + '</td>'
+      + '<td><button class="btn btn-sm btn-outline-primary" onclick="js_editUser(' + u.id + ')">编辑</button> '
+      + '<button class="btn btn-sm btn-outline-secondary" onclick="js_toggleAdmin(' + u.id + ')">'
+      + (u.is_admin ? '取消管理员' : '设为管理员') + '</button> '
+      + managerRoleButtons(u)
+      + (u.phone === 'admin' ? '' : '<button class="btn btn-sm btn-outline-danger" onclick="js_deleteUser(' + u.id + ')">删除</button>')
+      + '</td></tr>';
+  });
+  html += '</tbody></table></div>';
+  box.innerHTML = html;
+}
+async function js_toggleAdmin(id){
+  var u = usersCache.filter(function(x){ return x.id === id; })[0];
+  if (!u){ toast('用户不存在', 'danger'); return; }
+  var next = !u.is_admin;
+  if (!confirm(next ? ('确定把「' + u.name + '」设为管理员？') : ('确定取消「' + u.name + '」的管理员权限？'))) return;
+  var r = await api('PUT', '/api/users/' + id, {
+    name: u.name, phone: u.phone, department: u.department || '',
+    position: u.position || '', is_admin: next, is_manager: !!u.is_manager, password: ''
+  });
+  if (!r.ok){ toast(r.error || '操作失败', 'danger'); return; }
+  toast(next ? '已设为管理员' : '已取消管理员权限', 'success');
+  loadUsers();
+}
+
+function managerRoleName(level){ return ({1:'一级负责人',2:'二级负责人',3:'三级负责人'})[level] || '一级负责人'; }
+function managerRoleButtons(u){
+  return [1,2,3].map(function(level){
+    var active=u.is_manager && Number(u.manager_level)===level;
+    return '<button class="btn btn-sm btn-outline-secondary" '+(active?'disabled ':'')+'onclick="js_setManagerRole('+u.id+','+level+')">'+(active?'已设为':'设为')+managerRoleName(level)+'</button> ';
+  }).join('') + (u.is_manager ? '<button class="btn btn-sm btn-outline-secondary" onclick="js_setManagerRole('+u.id+',0)">取消负责人</button> ' : '');
+}
+async function js_setManagerRole(id,level){
+  var u=usersCache.find(function(x){return x.id===id;});
+  if(!u) return;
+  if(level && (!u.department || (level>=2 && !u.department2) || (level===3 && !u.department3))){
+    toast('请先在编辑用户中补齐对应的部门信息','warning');return;
+  }
+  var label=level ? '设为'+managerRoleName(level) : '取消负责人';
+  if(!confirm('确定将「'+u.name+'」'+label+'？')) return;
+  var r=await api('PUT','/api/users/'+id,{
+    name:u.name,phone:u.phone,department:u.department||'',department2:u.department2||'',department3:u.department3||'',
+    position:u.position||'',is_admin:!!u.is_admin,is_manager:level>0,manager_level:level||u.manager_level||1,password:''
+  });
+  if(!r.ok){toast(r.error||'设置失败','danger');return;}
+  toast('已'+label,'success');await loadUsers();
+}
+function startUsersAutoRefresh(){
+  stopUsersAutoRefresh();
+  usersTimer = setInterval(function(){
+    if (document.querySelector('.modal.show')) return;
+    if ($('a-users').classList.contains('hidden')) return;
+    loadUsers();
+  }, 20000);
+}
+function stopUsersAutoRefresh(){
+  if (usersTimer){ clearInterval(usersTimer); usersTimer = null; }
+}
+function startMeSync(){ stopMeSync(); meTimer = setInterval(syncMe, 30000); }
+function stopMeSync(){ if (meTimer){ clearInterval(meTimer); meTimer = null; } }
+async function syncMe(){
+  if (!currentUser) return;
+  if (document.querySelector('.modal.show')) return;
+  var r = await api('GET', '/api/me');
+  if (!r.ok || !r.user){
+    stopMeSync();
+    currentUser = null;
+    alert('你的账号已被管理员删除，或登录已过期，请重新登录。');
+    showLogin();
+    return;
+  }
+  var u = r.user;
+  var wasAdmin = currentUser.is_admin;
+  var wasManager = currentUser.is_manager;
+  var changed = (u.name !== currentUser.name) || (u.department !== currentUser.department) || (u.department2 !== currentUser.department2) || (u.department3 !== currentUser.department3) ||
+                (u.position !== currentUser.position) || (u.phone !== currentUser.phone);
+  currentUser = u;
+  if (u.is_admin !== wasAdmin || u.is_manager !== wasManager){ enterByRole(); return; }
+  if (u.is_admin) return;
+  if (changed){
+    $('engUserName').textContent = u.name || '';
+    $('engName').value = u.name || '';
+    $('engPhone').value = u.phone || '';
+    if (document.activeElement !== $('engDept')) $('engDept').value = u.department || '';
+    if(document.activeElement !== $('engDept2')) $('engDept2').value=u.department2||'';
+    if(document.activeElement !== $('engDept3')) $('engDept3').value=u.department3||'';
+    updateProfileDepartmentPath();
+    if (document.activeElement !== $('engPos')) $('engPos').value = u.position || '';
+    toast('你的账号资料已被管理员更新', 'info');
+  }
+  if (u.must_change_password && $('changePwView').classList.contains('hidden')){
+    hideAll();
+    $('changePwView').classList.remove('hidden');
+  }
+}
+function js_showUserForm(){
+  editingUserId = null;
+  $('userModalTitle').textContent = '添加用户';
+  $('userName').value = ''; $('userPhone').value = '';
+  $('userDept').value = ''; $('userPos').value = '';
+  $('userDept2').value = ''; $('userDept3').value = '';
+  $('userAdmin').value = 'false'; $('userManager').value = '0'; $('userPassword').value = '123456';
+  new bootstrap.Modal($('userModal')).show();
+}
+async function js_editUser(id){
+  var r = await api('GET', '/api/users');
+  if (!r.ok){ toast('读取失败', 'danger'); return; }
+  var u = (r.users || []).filter(function(x){ return x.id === id; })[0];
+  if (!u){ toast('用户不存在', 'danger'); return; }
+  editingUserId = id;
+  $('userModalTitle').textContent = '编辑用户：' + u.name;
+  $('userName').value = u.name; $('userPhone').value = u.phone;
+  $('userDept').value = u.department || ''; $('userPos').value = u.position || '';
+  $('userDept2').value = u.department2 || ''; $('userDept3').value = u.department3 || '';
+  $('userAdmin').value = u.is_admin ? 'true' : 'false';
+  $('userManager').value = u.is_manager ? String(u.manager_level || 1) : '0';
+  $('userPassword').value = '';
+  new bootstrap.Modal($('userModal')).show();
+}
+function js_setPwdDefault(){ $('userPassword').value = '123456'; }
+async function js_saveUser(e){
+  e.preventDefault();
+  var body = {
+    name: $('userName').value.trim(), phone: $('userPhone').value.trim(),
+    department: $('userDept').value.trim(), position: $('userPos').value.trim(),
+    department2: $('userDept2').value.trim(), department3: $('userDept3').value.trim(), manager_level: Number($('userManager').value) || 1,
+    is_admin: $('userAdmin').value === 'true',
+    is_manager: $('userManager').value !== '0',
+    password: $('userPassword').value
+  };
+  if (!body.name){ toast('请填写姓名', 'warning'); return false; }
+  if (!body.phone){ toast('请填写手机号', 'warning'); return false; }
+  var r;
+  if (editingUserId){ r = await api('PUT', '/api/users/' + editingUserId, body); }
+  else { r = await api('POST', '/api/users', body); }
+  if (!r.ok){ toast(r.error || '保存失败', 'danger'); return false; }
+  toast(r.message || '保存成功', 'success');
+  editingUserId = null;
+  bootstrap.Modal.getInstance($('userModal')).hide();
+  loadUsers();
+  return false;
+}
+async function js_deleteUser(id){
+  if (!confirm('确定删除该用户及其名下所有项目与月度数据？此操作不可恢复。')) return;
+  var r = await api('DELETE', '/api/users/' + id);
+  if (!r.ok){ toast(r.error || '删除失败', 'danger'); return; }
+  toast('已删除用户及其项目', 'success');
+  loadUsers();
+}
+
+// ---- 全部项目 ----
+async function loadAllProjects(){
+  var r = await api('GET', '/api/projects');
+  if (!r.ok){ toast(r.error || '加载失败', 'danger'); return; }
+  adminProjectList = r.projects || [];
+  fillCodeSelect('afCode', adminProjectList);
+  if (r.allowed) allowedPeriod = r.allowed;
+  $('adminPeriodLabel').textContent = allowedPeriod.label || '-';
+  // 归属人下拉（保留已选）
+  var oprev = $('afOwner').value;
+  var owners = [];
+  adminProjectList.forEach(function(p){
+    var n = p.owner_name || '';
+    if (n && owners.indexOf(n) === -1) owners.push(n);
+  });
+  owners.sort();
+  $('afOwner').innerHTML = '<option value="">全部人员</option>';
+  owners.forEach(function(n){
+    var o = document.createElement('option'); o.value = n; o.textContent = n;
+    $('afOwner').appendChild(o);
+  });
+  if (oprev && owners.indexOf(oprev) !== -1) $('afOwner').value = oprev;
+  applyAdminProjectFilter();
+}
+function getFilteredAdminProjects(){
+  var kw = ($('afKeyword').value || '').trim().toLowerCase();
+  var code = $('afCode').value;
+  var owner = $('afOwner').value;
+  var cat = $('afCategory').value;
+  var st = $('afStatus').value;
+  var sort = $('afSort').value;
+  var list = adminProjectList.filter(function(p){
+    if (code && (p.project_code || '').trim() !== code) return false;
+    if (kw){
+      var hay = ((p.project_code || '') + ' ' + (p.project_name || '') + ' ' + (p.tasks || '')).toLowerCase();
+      if (hay.indexOf(kw) === -1) return false;
+    }
+    if (owner && (p.owner_name || '') !== owner) return false;
+    if (cat && p.category !== cat) return false;
+    if (st === 'filled' && !hasFilledThisMonth(p)) return false;
+    if (st === 'pending' && hasFilledThisMonth(p)) return false;
+    return true;
+  });
+  if (sort === 'pending'){
+    list.sort(function(a, b){ return (hasFilledThisMonth(a) ? 1 : 0) - (hasFilledThisMonth(b) ? 1 : 0); });
+  } else if (sort === 'progress_desc'){
+    list.sort(function(a, b){
+      return (b.current_progress == null ? -1 : b.current_progress) - (a.current_progress == null ? -1 : a.current_progress);
+    });
+  } else if (sort === 'progress_asc'){
+    list.sort(function(a, b){
+      return (a.current_progress == null ? -1 : a.current_progress) - (b.current_progress == null ? -1 : b.current_progress);
+    });
+  }
+  return list;
+}
+function applyAdminProjectFilter(){
+  var list = getFilteredAdminProjects();
+  renderAdminProjectTable($('allProjectList'), list);
+  var s = $('adminFilterSummary');
+  if (s){
+    s.innerHTML = '共 <b>' + adminProjectList.length + '</b> 个项目，当前显示 <b>' + list.length + '</b> 个'
+      + (list.length !== adminProjectList.length ? '（已按条件筛选）' : '');
+  }
+}
+function js_resetAdminProjectFilter(){
+  $('afKeyword').value = ''; $('afCode').value = ''; $('afOwner').value = ''; $('afCategory').value = '';
+  $('afStatus').value = ''; $('afSort').value = 'default';
+  applyAdminProjectFilter();
+}
+
+// ---- 月度绩效看板 ----
+async function js_loadBoard(){
+  if (!allowedPeriod.year){
+    var pr = await api('GET', '/api/period');
+    if (pr && pr.ok) allowedPeriod = { year: pr.year, month: pr.month, label: pr.label };
+  }
+  if (!$('boardYearSelect').options.length){
+    var y0 = allowedPeriod.year || new Date().getFullYear();
+    for (var y = y0; y >= y0 - 3; y--){
+      var o = document.createElement('option'); o.value = y; o.textContent = y + ' 年';
+      $('boardYearSelect').appendChild(o);
+    }
+  }
+  boardYear = parseInt($('boardYearSelect').value, 10) || (allowedPeriod.year || new Date().getFullYear());
+  var dept = $('boardDeptSelect').value || '';
+  var r = await api('GET', '/api/performance?year=' + boardYear + (dept ? ('&department=' + encodeURIComponent(dept)) : ''));
+  if (!r.ok){ toast(r.error || '加载失败', 'danger'); return; }
+  boardData = r.list || [];
+
+  var dprev = $('boardDeptSelect').value;
+  $('boardDeptSelect').innerHTML = '<option value="">全部部门</option>';
+  (r.departments || []).forEach(function(d){
+    var od = document.createElement('option'); od.value = d; od.textContent = d;
+    $('boardDeptSelect').appendChild(od);
+  });
+  if (dprev && (r.departments || []).indexOf(dprev) !== -1){ $('boardDeptSelect').value = dprev; }
+  loadAdminPending();
+
+  var prev = $('boardUserSelect').value;
+  $('boardUserSelect').innerHTML = '<option value="">-- 请选择研发人员 --</option>';
+  boardData.forEach(function(it){
+    var o = document.createElement('option');
+    o.value = it.user.id;
+    o.textContent = it.user.name + '（' + (it.user.phone || '') + '）';
+    $('boardUserSelect').appendChild(o);
+  });
+  if (prev && boardData.some(function(it){ return String(it.user.id) === String(prev); })){
+    $('boardUserSelect').value = prev;
+  } else if (boardData.length){
+    $('boardUserSelect').value = boardData[0].user.id;
+  }
+
+  var defMonth = (boardYear === allowedPeriod.year) ? allowedPeriod.month : 12;
+  var mprev = $('boardMonthSelect').value;
+  $('boardMonthSelect').innerHTML = '';
+  for (var m = 1; m <= 12; m++){
+    var om = document.createElement('option'); om.value = m; om.textContent = m + ' 月';
+    $('boardMonthSelect').appendChild(om);
+  }
+  $('boardMonthSelect').value = mprev || defMonth;
+  $('boardYearTitle').textContent = boardYear + ' 年全年逐月绩效';
+  js_renderBoard();
+}
+function js_renderBoard(){
+  loadDeptSummary();
+  var uid = parseInt($('boardUserSelect').value, 10);
+  var box = $('boardResult'), tableBox = $('boardMonthsTable');
+  if (!uid){
+    box.innerHTML = '<p class="muted">请选择人员后查看该月绩效。</p>';
+    tableBox.innerHTML = '';
+    return;
+  }
+  var item = boardData.filter(function(x){ return x.user.id === uid; })[0];
+  if (!item){ box.innerHTML = '<p class="muted">未找到该人员数据。</p>'; return; }
+  var month = parseInt($('boardMonthSelect').value, 10) || 1;
+  var r = item.months[String(month)] || item.months[month];
+  box.innerHTML = renderMonthDetail(item.user, boardYear, month, r);
+  if ($('boardWeights')){
+    $('boardWeights').innerHTML = '绩效权重：市场 <b>' + fmt0(r.market_weight) + '%</b> ／ 自研 <b>'
+      + fmt0(r.self_weight) + '%</b>（满分 ' + fmt0(r.full_score) + ' 分）';
+  }
+  tableBox.innerHTML = renderMonthsTableFor(item, boardYear, month, 'board');
+}
+function fmt0(n){ return Number(n).toFixed(2).replace(/\.00$/, '').replace(/(\.\d)0$/, '$1'); }
+function renderMonthDetail(u, year, month, r){
+  var fmt = function(n){ return Number(n).toFixed(1); };
+  var card = function(title, count, avg, color){
+    return '<div class="col-md-4"><div class="card stat-card mb-0" style="background:' + color + ';">'
+      + '<div class="card-body" style="color:#fff;">'
+      + '<div style="font-size:.86rem;opacity:.9">' + title + '</div>'
+      + '<div style="font-size:28px;font-weight:700;line-height:1.25">' + count + '</div>'
+      + '<div style="font-size:.84rem;opacity:.9">平均完成率：' + fmt(avg) + '%</div>'
+      + '</div></div></div>';
+  };
+  return '<div class="mb-3"><b style="font-size:15px">' + esc(u.name) + '</b>'
+    + '<span class="muted ms-2" style="font-size:.85rem">' + year + ' 年 ' + month + ' 月 ｜ 部门：'
+    + esc(u.department || '-') + ' ｜ 职位：' + esc(u.position || '-') + '</span></div>'
+    + '<div class="row g-3 mb-3">' + card('当月填报项目数', r.total, r.overall_avg, '#1b2743') + '</div>'
+    + '<div class="row g-3 mb-3">'
+      + card('市场项目（' + r.market_count + '个）', r.market_count, r.market_avg, '#1b2743')
+      + card('自研项目（' + r.self_count + '个）', r.self_count, r.self_avg, '#2e7d63')
+    + '</div>'
+    + '<div class="card mb-0"><div class="card-header">' + month + ' 月绩效核算</div>'
+    + '<div class="card-body p-0"><table class="table mb-0">'
+      + '<tr><td>市场项目绩效得分（' + fmt(r.market_avg) + '% × ' + fmt0(r.market_weight) + '%）</td><td class="text-end"><b>' + fmt(r.market_score) + '</b> 分</td></tr>'
+      + '<tr><td>自研项目绩效得分（' + fmt(r.self_avg) + '% × ' + fmt0(r.self_weight) + '%）</td><td class="text-end"><b>' + fmt(r.self_score) + '</b> 分</td></tr>'
+      + '<tr class="row-current"><td><b>当月绩效总分（满分 ' + fmt0(r.full_score) + ' 分）</b></td><td class="text-end"><b style="font-size:20px;color:#1b2743">' + fmt(r.total_score) + '</b> 分</td></tr>'
+    + '</table></div></div>';
+}
+function renderMonthsTableFor(item, year, month, mode){
+  var fmt = function(n){ return Number(n).toFixed(1); };
+  var clickFn = (mode === 'dept') ? 'js_pickDmMonth' : 'js_pickMonth';
+  var html = '<div class="table-responsive"><table class="table table-hover align-middle"><thead><tr>'
+    + '<th>月份</th><th>填报项目数</th><th>市场项目数</th><th>市场平均完成率</th><th>市场得分</th>'
+    + '<th>自研项目数</th><th>自研平均完成率</th><th>自研得分</th><th>当月绩效总分</th></tr></thead><tbody>';
+  for (var m = 1; m <= 12; m++){
+    var r = item.months[String(m)] || item.months[m];
+    var cls = (m === month) ? ' class="row-current month-row"' : ' class="month-row"';
+    var isFillable = (m === allowedPeriod.month && year === allowedPeriod.year);
+    html += '<tr' + cls + ' onclick="' + clickFn + '(' + m + ')">'
+      + '<td><b>' + m + ' 月</b>' + (isFillable ? ' <span class="tag tag-warn">可填报</span>' : '') + '</td>'
+      + '<td>' + r.total + '</td>'
+      + '<td>' + r.market_count + '</td><td>' + fmt(r.market_avg) + '%</td><td>' + fmt(r.market_score) + '</td>'
+      + '<td>' + r.self_count + '</td><td>' + fmt(r.self_avg) + '%</td><td>' + fmt(r.self_score) + '</td>'
+      + '<td><b style="color:#1b2743">' + fmt(r.total_score) + '</b></td></tr>';
+  }
+  html += '<tr class="row-current"><td colspan="8" class="text-end"><b>全年累计得分</b></td>'
+       +  '<td><b style="color:#1b2743">' + fmt(item.year_total) + '</b></td></tr>';
+  html += '</tbody></table></div>';
+  return html;
+}
+function js_pickMonth(m){ $('boardMonthSelect').value = m; js_renderBoard(); }
+function js_pickDmMonth(m){ $('dmMonthSelect').value = m; js_renderDeptPerf(); }
+
+async function loadDeptSummary(){
+  var month = parseInt($('boardMonthSelect').value, 10) || 1;
+  var r = await api('GET', '/api/performance/departments?year=' + boardYear + '&month=' + month);
+  var box = $('boardDeptTable');
+  if (!r.ok){ box.innerHTML = '<p class="muted">部门汇总加载失败。</p>'; return; }
+  $('boardDeptTitle').textContent = boardYear + ' 年 ' + month + ' 月 · 部门绩效汇总';
+  var list = r.list || [];
+  if (!list.length){ box.innerHTML = emptyState('🏢', '暂无部门数据。'); return; }
+  var fmt = function(n){ return Number(n).toFixed(1); };
+  var html = '<div class="table-responsive"><table class="table table-hover align-middle"><thead><tr>'
+    + '<th>部门</th><th>部门人数</th><th>当月已填报人数</th><th>当月平均绩效分</th>'
+    + '<th>平均市场得分</th><th>平均自研得分</th><th>当月绩效分合计</th></tr></thead><tbody>';
+  list.forEach(function(d){
+    html += '<tr><td><b>' + esc(d.department) + '</b></td><td>' + d.people + '</td><td>' + d.filled_people + '</td>'
+      + '<td><b style="color:#1b2743">' + fmt(d.avg_total_score) + '</b></td>'
+      + '<td>' + fmt(d.avg_market_score) + '</td><td>' + fmt(d.avg_self_score) + '</td>'
+      + '<td>' + fmt(d.sum_total_score) + '</td></tr>';
+  });
+  html += '</tbody></table></div>'
+    + '<p class="muted mt-2 mb-0" style="font-size:.8rem;">平均绩效分 = 该部门当月"有填报"人员的当月总分之和 ÷ 当月有填报人数。</p>';
+  box.innerHTML = html;
+}
+
+async function loadAdminPending(){
+  var box = $('adminPendingBanner');
+  var r = await api('GET', '/api/pending');
+  if (!r.ok || !r.admin || !r.unfilled_users || !r.unfilled_users.length){
+    box.classList.add('hidden');
+    return;
+  }
+  var withProj = r.unfilled_users.filter(function(u){ return u.project_count > 0; });
+  var noProj = r.unfilled_users.filter(function(u){ return u.project_count === 0; });
+  var names = function(arr){ return esc(arr.map(function(u){ return u.name; }).join('、')); };
+  var parts = [];
+  if (withProj.length) parts.push('有项目但<b>未填报 ' + esc(r.label) + '</b> 的共 <b>' + withProj.length + '</b> 位：' + names(withProj));
+  if (noProj.length) parts.push('尚未添加任何项目的共 <b>' + noProj.length + '</b> 位：' + names(noProj));
+  box.classList.remove('hidden');
+  box.innerHTML = '⚠️ ' + parts.join('<br>⚠️ ');
+}
+
+// ===================================================================
+// 部门负责人：部门成员 / 部门项目 / 部门绩效
+// ===================================================================
+async function loadDeptMembers(){
+  await initOrgFilters();
+  var box = $('dmMembersList');
+  var r = await api('GET', '/api/dept/members?' + orgQuery());
+  if (!r.ok){ box.innerHTML = emptyState('⚠️', r.error || '加载失败'); return; }
+  if (r.department) $('dmMembersTitle').textContent = '本部门成员（' + r.department + '）';
+  if (r.note){ box.innerHTML = emptyState('💡', r.note); return; }
+  var list = r.members || [];
+  if (!list.length){ box.innerHTML = emptyState('👥', '本部门暂无成员。'); return; }
+  var html = '<div class="table-responsive"><table class="table table-hover align-middle"><thead><tr>'
+    + '<th>姓名</th><th>手机号</th><th>部门</th><th>职位</th><th>角色</th></tr></thead><tbody>';
+  list.forEach(function(u){
+    var role = u.is_manager ? '<span class="pill pill-admin">' + managerRoleName(u.manager_level) + '</span>' : '<span class="pill pill-dev">研发</span>';
+    html += '<tr><td><b>' + esc(u.name) + '</b></td><td>' + esc(u.phone) + '</td>'
+      + '<td>' + esc([u.department,u.department2,u.department3].filter(Boolean).join(' / ') || '—') + '</td><td>' + esc(u.position || '—') + '</td>'
+      + '<td>' + role + '</td></tr>';
+  });
+  html += '</tbody></table></div>';
+  box.innerHTML = html;
+}
+
+
+var orgFilter = {department2:'', department3:'', scope:'all'};
+function orgQuery(){ return new URLSearchParams(orgFilter).toString(); }
+async function initOrgFilters(){
+  var r = await api('GET','/api/dept/filters?' + orgQuery());
+  if(!r.ok) return;
+  if(orgFilter.department2 && !(r.departments2||[]).includes(orgFilter.department2)) orgFilter.department2='';
+  if(orgFilter.department3 && !(r.departments3||[]).includes(orgFilter.department3)) orgFilter.department3='';
+  document.querySelectorAll('.org-filter-bar').forEach(function(bar){
+    bar.innerHTML='';
+    [['scope','人员范围',[['all','本部门全部人员（含下级部门）'],['direct','直属下属（下一级负责人及本级直属人员）']]],
+     ['department2','二级部门',[['','全部二级部门']].concat((r.departments2||[]).map(x=>[x,x]))],
+     ['department3','三级部门',[['','全部三级部门']].concat((r.departments3||[]).map(x=>[x,x]))]].forEach(function(def){
+       var label=document.createElement('label'); label.className='form-label'; label.textContent=def[1];
+       var sel=document.createElement('select'); sel.className='form-select'; sel.setAttribute('aria-label',def[1]);
+       def[2].forEach(function(pair){var o=document.createElement('option');o.value=pair[0];o.textContent=pair[1];sel.appendChild(o);});
+       sel.value=orgFilter[def[0]];
+       sel.onchange=function(){orgFilter[def[0]]=sel.value; if(def[0]==='department2') orgFilter.department3=''; orgReload(bar);};
+       label.appendChild(sel);bar.appendChild(label);
+    });
+    var reset=document.createElement('button');reset.className='btn btn-outline-secondary';reset.textContent='重置部门筛选';reset.onclick=function(){orgFilter={department2:'',department3:'',scope:'all'};orgReload(bar);};bar.appendChild(reset);
+  });
+}
+function orgReload(bar){
+  var id=bar.dataset.orgSection;
+  if(id==='dm-members') loadDeptMembers();
+  else if(id==='dm-projects') loadDeptProjects();
+  else loadDeptPerformance();
+}
+
+var deptProjectList = [];
+async function loadDeptProjects(){
+  await initOrgFilters();
+  var r = await api('GET', '/api/dept/projects?' + orgQuery());
+  if (!r.ok){ toast(r.error || '加载失败', 'danger'); return; }
+  deptProjectList = r.projects || [];
+  fillCodeSelect('dfCode', deptProjectList);
+  if (r.allowed) allowedPeriod = r.allowed;
+  if (r.department) $('dmProjectsTitle').textContent = '本部门全部项目（' + r.department + '）';
+  var prev = $('dfOwner').value;
+  var owners = [];
+  deptProjectList.forEach(function(p){
+    var n = p.owner_name || '';
+    if (n && owners.indexOf(n) === -1) owners.push(n);
+  });
+  owners.sort();
+  $('dfOwner').innerHTML = '<option value="">全部成员</option>';
+  owners.forEach(function(n){
+    var o = document.createElement('option'); o.value = n; o.textContent = n;
+    $('dfOwner').appendChild(o);
+  });
+  if (prev && owners.indexOf(prev) !== -1) $('dfOwner').value = prev;
+  applyDeptProjectFilter();
+}
+function getFilteredDeptProjects(){
+  var kw = ($('dfKeyword').value || '').trim().toLowerCase();
+  var code = $('dfCode').value;
+  var owner = $('dfOwner').value, cat = $('dfCategory').value;
+  var st = $('dfStatus').value, sort = $('dfSort').value;
+  var list = deptProjectList.filter(function(p){
+    if (code && (p.project_code || '').trim() !== code) return false;
+    if (kw){
+      var hay = ((p.project_code || '') + ' ' + (p.project_name || '') + ' ' + (p.tasks || '')).toLowerCase();
+      if (hay.indexOf(kw) === -1) return false;
+    }
+    if (owner && (p.owner_name || '') !== owner) return false;
+    if (cat && p.category !== cat) return false;
+    if (st === 'filled' && !hasFilledThisMonth(p)) return false;
+    if (st === 'pending' && hasFilledThisMonth(p)) return false;
+    return true;
+  });
+  if (sort === 'pending'){
+    list.sort(function(a, b){ return (hasFilledThisMonth(a) ? 1 : 0) - (hasFilledThisMonth(b) ? 1 : 0); });
+  } else if (sort === 'progress_desc'){
+    list.sort(function(a, b){
+      return (b.current_progress == null ? -1 : b.current_progress) - (a.current_progress == null ? -1 : a.current_progress);
+    });
+  } else if (sort === 'progress_asc'){
+    list.sort(function(a, b){
+      return (a.current_progress == null ? -1 : a.current_progress) - (b.current_progress == null ? -1 : b.current_progress);
+    });
+  }
+  return list;
+}
+function applyDeptProjectFilter(){
+  var list = getFilteredDeptProjects();
+  renderAdminProjectTable($('dmProjectList'), list, deptProjectList.length);
+  var s = $('deptFilterSummary');
+  if (s){
+    s.innerHTML = '共 <b>' + deptProjectList.length + '</b> 个项目，当前显示 <b>' + list.length + '</b> 个'
+      + (list.length !== deptProjectList.length ? '（已按条件筛选）' : '');
+  }
+}
+function js_resetDeptProjectFilter(){
+  $('dfKeyword').value = ''; $('dfCode').value = ''; $('dfOwner').value = ''; $('dfCategory').value = '';
+  $('dfStatus').value = ''; $('dfSort').value = 'default';
+  applyDeptProjectFilter();
+}
+
+var deptPerfData = [], deptPerfYear = 0;
+function ensureDmYearSelect(){
+  if ($('dmYearSelect').options.length) return;
+  var y0 = allowedPeriod.year || new Date().getFullYear();
+  for (var y = y0; y >= y0 - 3; y--){
+    var o = document.createElement('option'); o.value = y; o.textContent = y + ' 年';
+    $('dmYearSelect').appendChild(o);
+  }
+  $('dmMonthSelect').innerHTML = '';
+  for (var m = 1; m <= 12; m++){
+    var om = document.createElement('option'); om.value = m; om.textContent = m + ' 月';
+    $('dmMonthSelect').appendChild(om);
+  }
+}
+async function loadDeptPerformance(){
+  await initOrgFilters();
+  ensureDmYearSelect();
+  deptPerfYear = parseInt($('dmYearSelect').value, 10) || (allowedPeriod.year || new Date().getFullYear());
+  var r = await api('GET', '/api/dept/performance?year=' + deptPerfYear + '&' + orgQuery());
+  if (!r.ok){ toast(r.error || '加载失败', 'danger'); return; }
+  deptPerfData = r.list || [];
+  if (r.department) $('dmPerfTitle').textContent = '本部门月度绩效（' + r.department + '）';
+  if ($('dmWeightNote')){
+    $('dmWeightNote').innerHTML = '绩效权重：市场 <b>' + fmt0(r.market_weight) + '%</b> ／ 自研 <b>'
+      + fmt0(r.self_weight) + '%</b>（满分 ' + fmt0(r.full_score) + ' 分）';
+  }
+  var prev = $('dmUserSelect').value;
+  $('dmUserSelect').innerHTML = '<option value="">-- 请选择本部门成员 --</option>';
+  deptPerfData.forEach(function(it){
+    var o = document.createElement('option');
+    o.value = it.user.id;
+    o.textContent = it.user.name + '（' + (it.user.position || it.user.phone || '') + '）';
+    $('dmUserSelect').appendChild(o);
+  });
+  if (prev && deptPerfData.some(function(it){ return String(it.user.id) === String(prev); })){
+    $('dmUserSelect').value = prev;
+  } else if (deptPerfData.length){
+    $('dmUserSelect').value = deptPerfData[0].user.id;
+  }
+  $('dmMonthSelect').value = (deptPerfYear === allowedPeriod.year) ? allowedPeriod.month : 12;
+  $('dmPerfYearTitle').textContent = deptPerfYear + ' 年全年逐月绩效';
+  js_renderDeptPerf();
+}
+function js_renderDeptPerf(){
+  var uid = parseInt($('dmUserSelect').value, 10);
+  var box = $('dmPerfResult'), tb = $('dmPerfMonths');
+  if (!uid){
+    box.innerHTML = '<p class="muted">请选择成员后查看该月绩效。</p>';
+    tb.innerHTML = '';
+    return;
+  }
+  var item = deptPerfData.filter(function(x){ return x.user.id === uid; })[0];
+  if (!item){ box.innerHTML = '<p class="muted">未找到该成员数据。</p>'; return; }
+  var month = parseInt($('dmMonthSelect').value, 10) || 1;
+  box.innerHTML = renderMonthDetail(item.user, deptPerfYear, month,
+                                    item.months[String(month)] || item.months[month]);
+  tb.innerHTML = renderMonthsTableFor(item, deptPerfYear, month, 'dept');
+}
+async function js_exportDept(){
+  var url = '/api/dept/export.xlsx?year=' + (deptPerfYear || allowedPeriod.year) + '&' + orgQuery();
+  var res = await fetch(url, { credentials: 'same-origin' });
+  if (!res.ok){
+    var d = null; try { d = await res.json(); } catch (e) {}
+    toast((d && d.error) || '导出失败', 'danger');
+    return;
+  }
+  downloadBlob(await res.blob(), '绩效统计_本部门_' + (deptPerfYear || allowedPeriod.year) + '年.xlsx');
+}
+
+// ===================================================================
+// 系统设置：绩效权重（管理员）
+// ===================================================================
+async function loadSettings(){
+  var r = await api('GET', '/api/settings');
+  if (!r.ok){ toast(r.error || '加载失败', 'danger'); return; }
+  $('setMarketW').value = fmt0(r.market_weight);
+  $('setSelfW').value = fmt0(r.self_weight);
+  updateSetPreview();
+}
+function updateSetPreview(){
+  var mw = parseFloat($('setMarketW').value), sw = parseFloat($('setSelfW').value);
+  if (isNaN(mw)) mw = 0;
+  if (isNaN(sw)) sw = 0;
+  $('setPreview').innerHTML = '按当前设置：市场项目满分 <b>' + fmt0(mw) + '</b> 分 ／ 自研项目满分 <b>'
+    + fmt0(sw) + '</b> 分 → <b>绩效总分满分 ' + fmt0(mw + sw) + ' 分</b>';
+}
+async function js_saveSettings(){
+  var mw = parseFloat($('setMarketW').value), sw = parseFloat($('setSelfW').value);
+  if (isNaN(mw) || isNaN(sw) || mw < 0 || mw > 100 || sw < 0 || sw > 100){
+    toast('权重需为 0~100 的数字', 'warning'); return;
+  }
+  var r = await api('PUT', '/api/settings', { market_weight: mw, self_weight: sw });
+  if (!r.ok){ toast(r.error || '保存失败', 'danger'); return; }
+  toast(r.message || '已保存', 'success');
+  updateSetPreview();
+}
+function js_resetSettings(){
+  $('setMarketW').value = 30;
+  $('setSelfW').value = 30;
+  updateSetPreview();
+}
+
+// 通用：下载二进制文件
+function downloadBlob(blob, filename){
+  var objurl = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = objurl; a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(function(){ URL.revokeObjectURL(objurl); }, 2000);
+}
+
+// ---- 导出 Excel ----
+async function js_exportPerformance(onlyCurrent){
+  var url = '/api/export/performance.xlsx?year=' + (boardYear || allowedPeriod.year);
+  if (onlyCurrent){
+    var uid = parseInt($('boardUserSelect').value, 10);
+    if (!uid){ toast('请先在上方选择一位研发人员', 'warning'); return; }
+    url += '&user_id=' + uid;
+  }
+  var res = await fetch(url, { credentials: 'same-origin' });
+  if (!res.ok){
+    var d = null; try { d = await res.json(); } catch (e) {}
+    toast((d && d.error) || '导出失败', 'danger');
+    return;
+  }
+  downloadBlob(await res.blob(),
+    onlyCurrent ? ('绩效统计_' + boardYear + '年.xlsx') : ('绩效统计_全部人员_' + boardYear + '年.xlsx'));
+  toast('Excel 已开始下载', 'success');
+}
+
+window.addEventListener('DOMContentLoaded', init);
+</script>
+<script src="/static/pm.js"></script>
+</body>
+</html>

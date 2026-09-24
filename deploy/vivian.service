@@ -1,0 +1,30 @@
+# ============================================================
+# systemd 服务模板 —— 复制到 /etc/systemd/system/vivian.service
+# 【部署前必须修改】下面两个 CHANGE_ME 环境变量
+# ============================================================
+[Unit]
+Description=R&D Project Management System (Flask + SQLite)
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu/vivian
+
+# 会话签名密钥：务必改成随机值
+#   生成命令：python3 -c "import secrets;print(secrets.token_hex(32))"
+Environment=VIVIAN_SECRET=CHANGE_ME_请替换为随机密钥
+# 管理员初始密码（首次启动创建 admin 账号时使用）
+Environment=VIVIAN_ADMIN_PASSWORD=CHANGE_ME_请替换为强密码
+# 新建用户的初始密码（用户首次登录会被强制改密）
+Environment=VIVIAN_INITIAL_PASSWORD=123456
+# 站点走 HTTPS 时置为 1
+Environment=VIVIAN_COOKIE_SECURE=1
+
+ExecStart=/usr/bin/python3 -m gunicorn --preload --workers 2 --bind 127.0.0.1:8000 --access-logfile - app:app
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

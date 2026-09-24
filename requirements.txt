@@ -1,0 +1,20 @@
+# ============================================================
+# 研发项目管理系统 —— Python 依赖清单
+# ============================================================
+# 【方式一】apt 安装（Ubuntu / Debian，本项目即用此方式部署，推荐）
+#   sudo apt-get update
+#   sudo apt-get install -y python3-flask python3-gunicorn python3-openpyxl
+#
+# 【方式二】pip 安装（建议放在虚拟环境里）
+#   python3 -m venv venv && source venv/bin/activate
+#   pip install -r requirements.txt
+#
+# 说明：
+#   Flask     —— Web 框架（自带 Werkzeug，用于密码哈希 / WSGI）
+#   gunicorn  —— 生产环境 WSGI 服务器
+#   openpyxl  —— 生成 Excel 导出文件
+# 数据库使用 Python 内置的 sqlite3，无需额外安装。
+# ============================================================
+Flask>=3.0
+gunicorn>=20.1
+openpyxl>=3.1

@@ -1,0 +1,25 @@
+# Local data and secrets
+data/
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+# Python and local tooling
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.idea/
+.vscode/
+*.log
+*.zip
+.DS_Store
+Thumbs.db
