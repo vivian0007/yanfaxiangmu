@@ -70,6 +70,34 @@ class ProjectManagementTests(unittest.TestCase):
             self.assertEqual(self.admin.put('/api/settings', json=dict(market_weight=bad, self_weight=30)).status_code, 400)
         self.assertEqual(self.admin.get('/api/settings').json['market_weight'], 42.5)
 
+    def test_person_weights_scope_and_calculation(self):
+        self.db.row_factory = sqlite3.Row
+        self.org_fixture()
+        values=dict(market_weight=50,self_weight=20)
+        self.assertEqual(self.manager.put('/api/person-weights/2',json=values).status_code,200)
+        self.assertEqual(self.owner.put('/api/person-weights/3',json=values).status_code,200)
+        for uid in (1,2,4,5):
+            self.assertEqual(self.owner.put(f'/api/person-weights/{uid}',json=values).status_code,403)
+        self.assertEqual(self.executor.put('/api/person-weights/2',json=values).status_code,403)
+        self.db.execute('UPDATE users SET is_manager=1,manager_level=3 WHERE id=3')
+        self.db.execute("UPDATE users SET department='R&D',department2='Software',department3='Platform' WHERE id=4")
+        self.db.commit()
+        self.assertEqual(self.executor.put('/api/person-weights/4',json=values).status_code,200)
+        self.assertEqual(self.executor.put('/api/person-weights/3',json=values).status_code,403)
+        self.db.execute("UPDATE users SET department3='Other' WHERE id=4")
+        self.db.commit()
+        self.assertEqual(self.executor.put('/api/person-weights/4',json=values).status_code,403)
+        self.assertEqual(self.manager.put('/api/person-weights/3',json=values).status_code,200)
+        y,m=module.allowed_period()
+        self.owner.put(f'/api/projects/{self.pid}/progress',json=dict(year=y,month=m,progress=80))
+        perf=module.monthly_performance(self.db,2,y,m)
+        self.assertEqual(perf['market_score'],40)
+        module.init_db()
+        self.assertEqual(module.load_weights(self.db,2),(0.5,0.2))
+        self.assertEqual(self.manager.put('/api/person-weights/2',json=dict(market_weight=101,self_weight=20)).status_code,400)
+        self.assertEqual(self.manager.put('/api/person-weights/2',json=dict(use_default=True)).status_code,200)
+        self.assertEqual(module.load_weights(self.db,2),(0.3,0.3))
+
     def org_fixture(self):
         self.db.execute("UPDATE users SET department2='Software' WHERE id IN (2,3)")
         self.db.execute("UPDATE users SET department3='Platform' WHERE id=3")

@@ -912,7 +912,7 @@
               <select class="form-select" id="boardMonthSelect" onchange="js_renderBoard()"></select>
             </div>
           </div>
-          <div class="d-flex align-items-center gap-3 mt-2"><div class="muted" id="boardWeights" style="font-size:.82rem;"></div><button type="button" class="btn btn-outline-primary btn-sm" onclick="js_go('a-settings')">修改权重</button></div>
+          <div class="d-flex align-items-center gap-3 mt-2"><div class="muted" id="boardWeights" style="font-size:.82rem;"></div><button type="button" class="btn btn-outline-primary btn-sm" onclick="js_go('a-settings')">系统默认权重</button><button type="button" class="btn btn-outline-primary btn-sm" onclick="editPersonWeights()">人员权重</button></div>
         </div>
 
         <div class="section-title">当月明细</div>
@@ -935,7 +935,7 @@
             <div class="card-body">
               <p class="muted" style="font-size:.87rem;">
                 绩效总分 = 市场项目平均完成率 × <b>市场权重</b> ＋ 自研项目平均完成率 × <b>自研权重</b>。<br>
-                由管理员手工填写，每项可设为 <b>0～100%</b>，支持两位小数。初始值各为 30%，不要求合计 100%。保存后<b>所有月份的看板与导出均按新权重计算</b>，原始月报不变。
+                由管理员手工填写，每项可设为 <b>0～100%</b>，支持两位小数。初始值各为 30%，不要求合计 100%。保存后<b>未设置个人权重的人员，所有月份的看板与导出按新默认权重计算</b>，原始月报不变。
               </p>
               <div class="row g-3">
                 <div class="col-6">
@@ -2506,6 +2506,7 @@ async function loadDeptPerformance(){
     $('dmWeightNote').innerHTML = '绩效权重：市场 <b>' + fmt0(r.market_weight) + '%</b> ／ 自研 <b>'
       + fmt0(r.self_weight) + '%</b>（满分 ' + fmt0(r.full_score) + ' 分）';
   }
+  $('dmWeightNote').innerHTML = '每人按各自权重计算；未单独设置时使用系统默认权重。 <button class="btn btn-outline-primary btn-sm" onclick="editPersonWeights()">人员权重</button>';
   var prev = $('dmUserSelect').value;
   $('dmUserSelect').innerHTML = '<option value="">-- 请选择本部门成员 --</option>';
   deptPerfData.forEach(function(it){
@@ -2552,6 +2553,28 @@ async function js_exportDept(){
 // ===================================================================
 // 系统设置：绩效权重（管理员）
 // ===================================================================
+
+async function editPersonWeights(){
+  var r=await api('GET','/api/person-weights');
+  if(!r.ok){toast(r.error,'danger');return;}
+  if(!r.users.length){toast('没有可修改权重的下级人员','warning');return;}
+  var dlg=document.createElement('dialog');dlg.className='pm-dialog';
+  dlg.innerHTML='<form><h2>人员绩效权重</h2><p>仅可修改所辖部门下级人员。保存后该人员所有月份按新权重计算。</p><label>人员<select name="person" class="form-select"></select></label><p class="muted" id="pw-source"></p><label>市场权重（%）<input class="form-control" name="market" type="number" min="0" max="100" step="0.01" required></label><label>自研权重（%）<input class="form-control" name="self" type="number" min="0" max="100" step="0.01" required></label><p role="alert"></p><footer><button type="button" name="cancel">取消</button><button type="button" name="reset">使用系统默认</button><button type="submit">保存个人权重</button></footer></form>';
+  document.body.append(dlg);var f=dlg.querySelector('form'),sel=f.elements.person;
+  r.users.forEach(u=>sel.add(new Option(u.name+' · '+u.department,u.id)));
+  function fill(){var u=r.users.find(u=>String(u.id)===sel.value);f.elements.market.value=u.market_weight;f.elements.self.value=u.self_weight;dlg.querySelector('#pw-source').textContent=u.custom?'当前：个人独立权重':'当前：使用系统默认权重';}
+  sel.onchange=fill;fill();dlg.onclose=()=>dlg.remove();f.elements.cancel.onclick=()=>dlg.close();
+  async function save(reset){
+    if(!reset&&!f.reportValidity())return;
+    f.querySelectorAll('button').forEach(b=>b.disabled=true);
+    try{var res=await api('PUT','/api/person-weights/'+sel.value,reset?{use_default:true}:{market_weight:Number(f.elements.market.value),self_weight:Number(f.elements.self.value)});
+      if(!res.ok){dlg.querySelector('[role=alert]').textContent=res.error;return;}
+      dlg.close();toast('人员权重已保存');loadModuleData(currentUser.is_admin?'a-board':'dm-performance');
+    }finally{f.querySelectorAll('button').forEach(b=>b.disabled=false);}
+  }
+  f.onsubmit=ev=>{ev.preventDefault();save(false);};f.elements.reset.onclick=()=>save(true);dlg.showModal();
+}
+
 async function loadSettings(){
   var r = await api('GET', '/api/settings');
   if (!r.ok){ toast(r.error || '加载失败', 'danger'); return; }

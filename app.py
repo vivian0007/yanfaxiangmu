@@ -254,7 +254,11 @@ DEFAULT_SETTINGS = {
 }
 
 
-def load_weights(db):
+def load_weights(db, user_id=None):
+    if user_id is not None:
+        row = db.execute("SELECT market_weight,self_weight FROM person_weights WHERE user_id=?", (user_id,)).fetchone()
+        if row is not None:
+            return row["market_weight"], row["self_weight"]
     """读取绩效权重，返回小数形式的 (市场权重, 自研权重)，默认 0.30 / 0.30。"""
     d = {}
     try:
@@ -281,6 +285,7 @@ def init_db():
     try:
         migrate_progress = con.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='project_progress'").fetchone() is None
         con.executescript(SCHEMA_SQL)
+        con.execute('CREATE TABLE IF NOT EXISTS person_weights (user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE, market_weight REAL NOT NULL CHECK(market_weight BETWEEN 0 AND 1), self_weight REAL NOT NULL CHECK(self_weight BETWEEN 0 AND 1));')
         con.execute("PRAGMA foreign_keys = ON")
         migrate_add_columns(con)
         if migrate_progress:
@@ -507,7 +512,7 @@ def monthly_performance(db, user_id, year, month):
         (user_id, year, month),
     ).fetchall()
     rows=list(rows)+[dict(r) for r in db.execute('SELECT category, AVG(progress) AS progress FROM task_monthly_reports WHERE user_id=? AND year=? AND month=? GROUP BY project_id,category',(user_id,year,month)).fetchall()]
-    market_w, self_w = load_weights(db)
+    market_w, self_w = load_weights(db, user_id)
     return calc_performance(rows, market_w, self_w)
 
 
@@ -1470,6 +1475,44 @@ def api_dept_export():
 # ------------------------------------------------------------------
 # 系统设置：绩效核算权重（仅管理员）
 # ------------------------------------------------------------------
+
+def weight_people():
+    u = current_user()
+    if u['is_admin']:
+        return get_db().execute('SELECT * FROM users WHERE is_admin=0 ORDER BY name').fetchall()
+    return [p for p in department_people(filtered=False)
+            if p['id'] != u['id'] and (not p['is_manager'] or p['manager_level'] > u['manager_level'])]
+
+@app.get('/api/person-weights')
+@manager_required
+def api_person_weights():
+    db = get_db()
+    out = []
+    for p in weight_people():
+        mw, sw = load_weights(db, p['id'])
+        custom = db.execute('SELECT 1 FROM person_weights WHERE user_id=?',(p['id'],)).fetchone() is not None
+        out.append(dict(id=p['id'],name=p['name'],department=' / '.join(x for x in organization_path(p) if x),market_weight=round(mw*100,2),self_weight=round(sw*100,2),custom=custom))
+    return jsonify(ok=True,users=out)
+
+@app.put('/api/person-weights/<int:uid>')
+@manager_required
+def api_save_person_weights(uid):
+    if uid not in {p['id'] for p in weight_people()}:
+        return fail('只能修改所辖部门的下级人员权重',403)
+    d=request.get_json(silent=True) or {}
+    db=get_db()
+    if d.get('use_default') is True:
+        db.execute('DELETE FROM person_weights WHERE user_id=?',(uid,))
+    else:
+        try:
+            mw,sw=float(d['market_weight']),float(d['self_weight'])
+            if not (0<=mw<=100 and 0<=sw<=100): raise ValueError()
+        except (KeyError,TypeError,ValueError):
+            return fail('权重需为 0~100 的数字')
+        db.execute('INSERT INTO person_weights VALUES(?,?,?) ON CONFLICT(user_id) DO UPDATE SET market_weight=excluded.market_weight,self_weight=excluded.self_weight',(uid,round(mw/100,6),round(sw/100,6)))
+    db.commit()
+    return jsonify(ok=True)
+
 @app.get("/api/settings")
 @admin_required
 def api_get_settings():

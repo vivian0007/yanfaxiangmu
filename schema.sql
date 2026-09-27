@@ -94,3 +94,5 @@ CREATE TABLE IF NOT EXISTS task_monthly_reports (
  done_items TEXT NOT NULL DEFAULT '', undone_items TEXT NOT NULL DEFAULT '',
  PRIMARY KEY(task_id,year,month)
 );
+
+CREATE TABLE IF NOT EXISTS person_weights (user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE, market_weight REAL NOT NULL CHECK(market_weight BETWEEN 0 AND 1), self_weight REAL NOT NULL CHECK(self_weight BETWEEN 0 AND 1));
