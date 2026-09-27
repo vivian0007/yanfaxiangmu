@@ -17,6 +17,7 @@
 
 import os
 import sqlite3
+import json
 from datetime import date, datetime
 from functools import wraps
 from io import BytesIO
@@ -85,6 +86,7 @@ CREATE TABLE IF NOT EXISTS users (
 CREATE TABLE IF NOT EXISTS projects (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id       INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  shared_scope TEXT NOT NULL DEFAULT '',
   project_code  TEXT    NOT NULL,
   project_name  TEXT    NOT NULL,
   category      TEXT    NOT NULL CHECK (category IN ('market','self')),
@@ -149,6 +151,16 @@ CREATE INDEX IF NOT EXISTS idx_ms_project ON milestones(project_id);
 CREATE TABLE IF NOT EXISTS settings (
   key   TEXT PRIMARY KEY,
   value TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS task_monthly_reports (
+ task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+ project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+ user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+ year INTEGER NOT NULL, month INTEGER NOT NULL,
+ category TEXT NOT NULL, progress INTEGER NOT NULL CHECK(progress BETWEEN 0 AND 100),
+ done_items TEXT NOT NULL DEFAULT '', undone_items TEXT NOT NULL DEFAULT '',
+ PRIMARY KEY(task_id,year,month)
 );
 """
 
@@ -230,6 +242,7 @@ def migrate_add_columns(con):
     add_col("users", "department3", "department3 TEXT NOT NULL DEFAULT ''")
     add_col("users", "manager_level", "manager_level INTEGER NOT NULL DEFAULT 1")
     add_col("users", "is_manager", "is_manager INTEGER NOT NULL DEFAULT 0")
+    add_col("projects", "shared_scope", "shared_scope TEXT NOT NULL DEFAULT ''")
     add_col("projects", "tasks", "tasks TEXT NOT NULL DEFAULT ''")
     add_col("projects", "status", "status TEXT NOT NULL DEFAULT 'active'")
     add_col("projects", "priority", "priority TEXT NOT NULL DEFAULT 'normal'")
@@ -490,9 +503,10 @@ def monthly_performance(db, user_id, year, month):
     rows = db.execute(
         "SELECT p.category AS category, pp.progress AS progress "
         "FROM projects p JOIN project_progress pp ON pp.project_id = p.id "
-        "WHERE p.user_id = ? AND pp.year = ? AND pp.month = ?",
+        "WHERE p.user_id = ? AND p.shared_scope = '' AND pp.year = ? AND pp.month = ?",
         (user_id, year, month),
     ).fetchall()
+    rows=list(rows)+[dict(r) for r in db.execute('SELECT category, AVG(progress) AS progress FROM task_monthly_reports WHERE user_id=? AND year=? AND month=? GROUP BY project_id,category',(user_id,year,month)).fetchall()]
     market_w, self_w = load_weights(db)
     return calc_performance(rows, market_w, self_w)
 
@@ -544,7 +558,19 @@ def fetch_task_stats(db, project_ids):
 
 
 def task_to_dict(row):
+    project=get_db().execute('SELECT * FROM projects WHERE id=?',(row['project_id'],)).fetchone()
+    user=current_user()
+    manage=project_can_manage(project)
+    own=row['assignee_id']==user['id']
+    can_edit=manage or (own and (not project['shared_scope'] or shared_project_visible(project,user)))
+    year,month=allowed_period()
+    monthly=get_db().execute('SELECT * FROM task_monthly_reports WHERE task_id=? AND year=? AND month=?',(row['id'],year,month)).fetchone()
     return {
+        "can_edit": can_edit,
+        "can_manage": manage,
+        "can_edit_details": manage or (own and bool(project['shared_scope']) and can_edit),
+        "shared": bool(project['shared_scope']),
+        "monthly": dict(monthly) if monthly and (manage or own) else None,
         "id": row["id"],
         "project_id": row["project_id"],
         "title": row["title"],
@@ -592,6 +618,9 @@ def project_to_dict(row, progress_map=None, month_row=None, task_stats=None):
     return {
         "id": row["id"],
         "user_id": row["user_id"],
+        "shared": bool(row["shared_scope"]),
+        "shared_department": " / ".join(json.loads(row["shared_scope"])) if row["shared_scope"] else "",
+        "can_manage": project_can_manage(row),
         "project_code": row["project_code"],
         "project_name": row["project_name"],
         "category": row["category"],
@@ -821,6 +850,28 @@ def validate_project_meta(d):
             "status": status, "priority": priority}, None
 
 
+def shared_project_visible(project, user=None):
+    user = user if user is not None else current_user()
+    if user['is_admin'] or project['user_id'] == user['id']:
+        return True
+    scope = json.loads(project['shared_scope']) if project['shared_scope'] else []
+    return bool(scope) and list(organization_path(user))[:len(scope)] == scope
+
+
+def project_can_manage(project):
+    user = current_user()
+    return bool(user['is_admin'] or project['user_id'] == user['id'])
+
+
+def _get_visible_project(pid):
+    row = get_db().execute('SELECT * FROM projects WHERE id=?', (pid,)).fetchone()
+    if row is None:
+        return None, fail('项目不存在',404)
+    if not shared_project_visible(row):
+        return None, fail('无权查看该项目',403)
+    return row, None
+
+
 def _get_project_or_403(pid):
     """取项目并校验权限：管理员可操作任意项目，普通用户仅可操作自己的。"""
     u = current_user()
@@ -838,18 +889,8 @@ def api_list_projects():
     """研发人员只看自己的项目；管理员看全部（附带归属人姓名与各月进度）。"""
     db = get_db()
     u = current_user()
-    if u["is_admin"]:
-        rows = db.execute(
-            "SELECT p.*, us.name AS owner_name FROM projects p "
-            "JOIN users us ON us.id = p.user_id ORDER BY p.created_at DESC, p.id DESC"
-        ).fetchall()
-    else:
-        rows = db.execute(
-            "SELECT p.*, us.name AS owner_name FROM projects p "
-            "JOIN users us ON us.id = p.user_id WHERE p.user_id = ? "
-            "ORDER BY p.created_at DESC, p.id DESC",
-            (u["id"],),
-        ).fetchall()
+    rows = db.execute("SELECT p.*, us.name AS owner_name FROM projects p JOIN users us ON us.id=p.user_id ORDER BY p.created_at DESC,p.id DESC").fetchall()
+    rows = [r for r in rows if shared_project_visible(r,u)]
     pm = fetch_progress_map(db, [r["id"] for r in rows])
     ts = fetch_task_stats(db, [r["id"] for r in rows])
     ay, am = allowed_period()
@@ -894,6 +935,21 @@ def api_create_project():
             return fail("请选择有效的项目负责人")
         if not db.execute("SELECT 1 FROM users WHERE id=?", (owner_id,)).fetchone():
             return fail("项目负责人不存在")
+    publisher = current_user()
+    shared = d.get('shared', bool(publisher['is_manager']))
+    if shared not in (True,False):
+        return fail('共享选项不正确')
+    scope = ''
+    if shared:
+        if not (publisher['is_admin'] or publisher['is_manager']):
+            return fail('仅部门负责人或管理员可发布部门项目',403)
+        owner = db.execute('SELECT * FROM users WHERE id=?',(owner_id,)).fetchone()
+        scope_user = owner if publisher['is_admin'] else publisher
+        depth = scope_user['manager_level'] if scope_user['is_manager'] else 1
+        parts = list(organization_path(scope_user))[:depth]
+        if not all(parts):
+            return fail('请先完善项目负责人的部门层级')
+        scope = json.dumps(parts,ensure_ascii=False)
     cur = db.execute(
         "INSERT INTO projects (user_id, project_code, project_name, category, start_date, delivery_date, "
         "tasks, status, priority, progress) VALUES (?,?,?,?,?,?,?,?,?,?)",
@@ -902,6 +958,7 @@ def api_create_project():
          payload["status"], payload["priority"], progress if has_progress else 0),
     )
     new_id = cur.lastrowid
+    db.execute("UPDATE projects SET shared_scope=? WHERE id=?",(scope,new_id))
     if has_progress or done_items or undone_items:
         db.execute(
             "INSERT OR REPLACE INTO project_progress "
@@ -1011,6 +1068,8 @@ def api_delete_project(pid):
     if err:
         return err
     db = get_db()
+    if db.execute('SELECT 1 FROM task_monthly_reports WHERE project_id=?',(pid,)).fetchone():
+        return fail('项目已有个人月度绩效记录，请保留项目并设为已完成')
     db.execute("DELETE FROM projects WHERE id = ?", (pid,))
     db.commit()
     return jsonify(ok=True, message="项目已删除")
@@ -1353,6 +1412,12 @@ def build_performance_workbook(db, users, year, month):
             ws4.append([dept, "%d年%d月" % (year, m), len(members[dept]), len(scores), avg, round(sum(scores), 2)])
     _style_sheet(ws4, [18, 12, 12, 18, 22, 22])
 
+    ws5=wb.create_sheet('个人任务月报')
+    ws5.append(['姓名','项目编码','任务','年','月','进度','完成事项','未完成事项'])
+    for person in users:
+        for report in db.execute('SELECT r.*,p.project_code,t.title FROM task_monthly_reports r JOIN projects p ON p.id=r.project_id JOIN tasks t ON t.id=r.task_id WHERE r.user_id=? AND r.year=? ORDER BY r.month,r.project_id,r.task_id',(person['id'],year)).fetchall():
+            ws5.append([person['name'],report['project_code'],report['title'],report['year'],report['month'],report['progress'],report['done_items'],report['undone_items']])
+    _style_sheet(ws5,[16,20,32,10,8,12,40,40])
     bio = BytesIO()
     wb.save(bio)
     bio.seek(0)
@@ -1522,7 +1587,7 @@ def api_user_options():
 def api_project_detail(pid):
     """项目详情：基本信息 + 负责人 + 任务 + 里程碑 + 月度进度明细。"""
     db = get_db()
-    row, err = _get_project_or_403(pid)
+    row, err = _get_visible_project(pid)
     if err:
         return err
     owner = db.execute("SELECT * FROM users WHERE id = ?", (row["user_id"],)).fetchone()
@@ -1545,7 +1610,9 @@ def api_project_detail(pid):
         "SELECT year, month, progress, done_items, undone_items, updated_at "
         "FROM project_progress WHERE project_id = ? ORDER BY year, month", (pid,)
     ).fetchall()
-    return jsonify(ok=True, project=proj,
+    reports = db.execute('SELECT r.*,u.name AS user_name,t.title AS task_title FROM task_monthly_reports r JOIN users u ON u.id=r.user_id JOIN tasks t ON t.id=r.task_id WHERE r.project_id=? ORDER BY r.year DESC,r.month DESC,r.task_id',(pid,)).fetchall()
+    reports = [dict(r) for r in reports if project_can_manage(row) or r['user_id']==current_user()['id']]
+    return jsonify(ok=True, project=proj, task_reports=reports,
                    tasks=[task_to_dict(t) for t in tasks],
                    milestones=[milestone_to_dict(m) for m in ms],
                    progress=[dict(x) for x in prog],
@@ -1595,7 +1662,7 @@ def _task_payload(d):
 @app.get("/api/projects/<int:pid>/tasks")
 @login_required
 def api_list_tasks(pid):
-    row, err = _get_project_or_403(pid)
+    row, err = _get_visible_project(pid)
     if err:
         return err
     rows = get_db().execute(
@@ -1608,12 +1675,20 @@ def api_list_tasks(pid):
 @app.post("/api/projects/<int:pid>/tasks")
 @login_required
 def api_create_task(pid):
-    row, err = _get_project_or_403(pid)
+    row, err = _get_visible_project(pid)
     if err:
         return err
     payload, verr = _task_payload(request.get_json(silent=True) or {})
     if verr:
         return fail(verr)
+    if not project_can_manage(row):
+        if payload['assignee_id'] not in (None,current_user()['id']):
+            return fail('只能为自己添加工作任务',403)
+        payload['assignee_id'] = current_user()['id']
+    if row['shared_scope'] and payload['assignee_id']:
+        person = get_db().execute('SELECT * FROM users WHERE id=?',(payload['assignee_id'],)).fetchone()
+        if not shared_project_visible(row,person):
+            return fail('执行人不在项目部门范围内')
     db = get_db()
     db.execute(
         "INSERT INTO tasks (project_id, title, detail, assignee_id, status, priority, due_date, progress) "
@@ -1636,6 +1711,9 @@ def _get_task_or_403(tid):
     u = current_user()
     if not u["is_admin"] and t["owner_id"] != u["id"] and t["assignee_id"] != u["id"]:
         return None, fail("无权操作该任务", 403)
+    project = db.execute('SELECT * FROM projects WHERE id=?',(t['project_id'],)).fetchone()
+    if project['shared_scope'] and not shared_project_visible(project,u):
+        return None, fail('已不在项目部门范围内',403)
     return t, None
 
 
@@ -1647,12 +1725,20 @@ def api_update_task(tid):
         return err
     d = request.get_json(silent=True) or {}
     u = current_user()
-    if not u["is_admin"] and t["owner_id"] != u["id"]:
-        if any(k not in ("status", "progress") for k in d):
-            return fail("任务执行人仅可更新状态和进度", 403)
+    project = get_db().execute('SELECT * FROM projects WHERE id=?',(t['project_id'],)).fetchone()
+    if not project_can_manage(project):
+        if project['shared_scope']:
+            if 'assignee_id' in d and str(d['assignee_id']) != str(u['id']):
+                return fail('不能转派他人的工作任务',403)
+        elif any(k not in ('status','progress') for k in d):
+            return fail('任务执行人仅可更新状态和进度',403)
     payload, verr = _task_payload(dict(dict(t), **d))
     if verr:
         return fail(verr)
+    if project['shared_scope'] and payload['assignee_id']:
+        person=get_db().execute('SELECT * FROM users WHERE id=?',(payload['assignee_id'],)).fetchone()
+        if not shared_project_visible(project,person):
+            return fail('执行人不在项目部门范围内')
     db = get_db()
     db.execute(
         "UPDATE tasks SET title=?, detail=?, assignee_id=?, status=?, priority=?, due_date=?, progress=?, "
@@ -1673,15 +1759,41 @@ def api_delete_task(tid):
     if not current_user()["is_admin"] and t["owner_id"] != current_user()["id"]:
         return fail("仅项目负责人或管理员可删除任务", 403)
     db = get_db()
+    if db.execute('SELECT 1 FROM task_monthly_reports WHERE task_id=?',(tid,)).fetchone():
+        return fail('任务已有月度绩效记录，请保留任务')
     db.execute("DELETE FROM tasks WHERE id = ?", (tid,))
     db.commit()
     return jsonify(ok=True, message="任务已删除")
 
 
+@app.put('/api/tasks/<int:tid>/monthly')
+@login_required
+def api_task_monthly(tid):
+    task,err = _get_task_or_403(tid)
+    if err: return err
+    db=get_db()
+    project=db.execute('SELECT * FROM projects WHERE id=?',(task['project_id'],)).fetchone()
+    if not project['shared_scope'] or task['assignee_id'] is None:
+        return fail('仅已分配执行人的共享项目任务支持个人月报')
+    d=request.get_json(silent=True) or {}
+    year,month=allowed_period()
+    if str(d.get('year'))!=str(year) or str(d.get('month'))!=str(month):
+        return fail('只能填报上一个月')
+    payload,error=_task_payload(dict(dict(task),**{'progress':d.get('progress'),'status':'doing'}))
+    if error:return fail(error)
+    old=db.execute('SELECT user_id FROM task_monthly_reports WHERE task_id=? AND year=? AND month=?',(tid,year,month)).fetchone()
+    if old and old['user_id']!=task['assignee_id']:
+        return fail('本月已由原执行人填报，不能覆盖其历史记录')
+    db.execute('INSERT INTO task_monthly_reports(task_id,project_id,user_id,year,month,category,progress,done_items,undone_items) VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(task_id,year,month) DO UPDATE SET progress=excluded.progress,done_items=excluded.done_items,undone_items=excluded.undone_items',
+       (tid,project['id'],task['assignee_id'],year,month,project['category'],payload['progress'],str(d.get('done_items') or '')[:2000],str(d.get('undone_items') or '')[:2000]))
+    db.commit()
+    return jsonify(ok=True)
+
+
 @app.get("/api/projects/<int:pid>/milestones")
 @login_required
 def api_list_milestones(pid):
-    row, err = _get_project_or_403(pid)
+    row, err = _get_visible_project(pid)
     if err:
         return err
     rows = get_db().execute(
@@ -1847,11 +1959,9 @@ def api_dashboard():
 @login_required
 def api_work_tasks():
     u = current_user()
-    where, params = ("1=1", ()) if u["is_admin"] else ("p.user_id=? OR t.assignee_id=?", (u["id"],u["id"]))
-    rows = get_db().execute(
-        "SELECT t.*, p.user_id AS owner_id, p.project_name, p.project_code, u.name AS assignee_name "
-        "FROM tasks t JOIN projects p ON p.id=t.project_id LEFT JOIN users u ON u.id=t.assignee_id "
-        "WHERE " + where + " ORDER BY t.id DESC", params).fetchall()
+    projects={p['id']:p for p in get_db().execute('SELECT * FROM projects').fetchall()}
+    rows=get_db().execute('SELECT t.*,p.user_id AS owner_id,p.project_name,p.project_code,u.name AS assignee_name FROM tasks t JOIN projects p ON p.id=t.project_id LEFT JOIN users u ON u.id=t.assignee_id ORDER BY t.id DESC').fetchall()
+    rows=[r for r in rows if shared_project_visible(projects[r['project_id']],u) or (not projects[r['project_id']]['shared_scope'] and r['assignee_id']==u['id'])]
     return jsonify(ok=True, tasks=[dict(task_to_dict(r), project_name=r["project_name"],
         project_code=r["project_code"], can_manage=bool(u["is_admin"] or r["owner_id"]==u["id"])) for r in rows])
 
@@ -1860,10 +1970,9 @@ def api_work_tasks():
 @login_required
 def api_work_milestones():
     u = current_user()
-    where, params = ("1=1", ()) if u["is_admin"] else ("p.user_id=?", (u["id"],))
-    rows = get_db().execute(
-        "SELECT m.*, p.project_name, p.project_code FROM milestones m JOIN projects p ON p.id=m.project_id "
-        "WHERE " + where + " ORDER BY (m.due_date=''), m.due_date, m.id", params).fetchall()
+    projects={p['id']:p for p in get_db().execute('SELECT * FROM projects').fetchall()}
+    rows=get_db().execute("SELECT m.*,p.project_name,p.project_code FROM milestones m JOIN projects p ON p.id=m.project_id ORDER BY (m.due_date=''),m.due_date,m.id").fetchall()
+    rows=[r for r in rows if shared_project_visible(projects[r['project_id']],u)]
     return jsonify(ok=True, milestones=[dict(milestone_to_dict(r),project_name=r["project_name"],project_code=r["project_code"]) for r in rows])
 
 

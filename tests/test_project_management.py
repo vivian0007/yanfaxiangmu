@@ -156,6 +156,56 @@ class ProjectManagementTests(unittest.TestCase):
         self.assertEqual(self.executor.post('/api/profile',json={**payload,'department2':''}).status_code,400)
         self.assertEqual(self.executor.get('/api/me').json['user']['department3'],'应用组')
 
+
+    def test_shared_department_project_and_member_tasks(self):
+        self.org_fixture()
+        pid=self.project(self.manager)
+        self.assertTrue(self.owner.get(f'/api/projects/{pid}').json['project']['shared'])
+        self.assertIn(pid,[p['id'] for p in self.executor.get('/api/projects').json['projects']])
+        self.assertEqual(self.other.get(f'/api/projects/{pid}').status_code,403)
+        self.assertEqual(self.executor.put(f'/api/projects/{pid}',json={'project_name':'Bad'}).status_code,403)
+        self.assertEqual(self.executor.post('/api/projects',json=dict(project_code='X',project_name='X',category='market',start_date='2026-01-01',delivery_date='2027-01-01',shared=True)).status_code,403)
+        for uid in [2,4]:
+            self.assertEqual(self.executor.post(f'/api/projects/{pid}/tasks',json={'title':'Wrong','assignee_id':uid}).status_code,403)
+        self.assertEqual(self.executor.post(f'/api/projects/{pid}/tasks',json={'title':'My work'}).status_code,200)
+        t=self.executor.get(f'/api/projects/{pid}/tasks').json['tasks'][0]
+        self.assertEqual(t['assignee_id'],3)
+        self.assertEqual(self.executor.put('/api/tasks/'+str(t['id']),json={'title':'Edited','detail':'Work plan','progress':40}).status_code,200)
+        self.assertEqual(self.owner.put('/api/tasks/'+str(t['id']),json={'title':'Bad'}).status_code,403)
+        self.assertEqual(self.manager.put('/api/tasks/'+str(t['id']),json={'title':'Arranged'}).status_code,200)
+        visible=self.owner.get('/api/work/tasks').json['tasks']
+        self.assertIn(t['id'],[x['id'] for x in visible])
+        read_only=next(x for x in visible if x['id']==t['id'])
+        self.assertFalse(read_only['can_edit'])
+        self.db.execute("UPDATE users SET department='Sales' WHERE id=3");self.db.commit()
+        self.assertEqual(self.executor.put('/api/tasks/'+str(t['id']),json={'progress':70}).status_code,403)
+
+    def test_shared_monthly_performance_and_history(self):
+        pid=self.project(self.manager)
+        ids=[]
+        for title in ['Work A','Work B']:
+            self.executor.post(f'/api/projects/{pid}/tasks',json={'title':title})
+        ids=[t['id'] for t in self.executor.get(f'/api/projects/{pid}/tasks').json['tasks']]
+        y,m=module.allowed_period()
+        for tid,progress in zip(ids,[40,80]):
+            r=self.executor.put(f'/api/tasks/{tid}/monthly',json={'year':y,'month':m,'progress':progress,'done_items':'Done'})
+            self.assertEqual(r.status_code,200,r.json)
+        result=self.admin.get(f'/api/performance/3?year={y}').json['months'][str(m)]
+        self.assertEqual(result['total'],1)
+        self.assertEqual(result['market_avg'],60)
+        self.assertEqual(result['total_score'],18)
+        self.assertEqual(self.manager.put(f'/api/projects/{pid}/progress',json={'year':y,'month':m,'progress':100}).status_code,200)
+        self.assertEqual(self.admin.get(f'/api/performance/5?year={y}').json['months'][str(m)]['total'],0)
+        self.assertEqual(self.executor.put(f'/api/tasks/{ids[0]}/monthly',json={'year':y-1,'month':m,'progress':90}).status_code,400)
+        self.assertEqual(self.owner.put(f'/api/tasks/{ids[0]}/monthly',json={'year':y,'month':m,'progress':90}).status_code,403)
+        self.assertEqual(len(self.executor.get(f'/api/projects/{pid}').json['task_reports']),2)
+        self.assertEqual(self.owner.get(f'/api/projects/{pid}').json['task_reports'],[])
+        self.assertEqual(self.manager.delete(f'/api/tasks/{ids[0]}').status_code,400)
+        self.assertEqual(self.manager.delete(f'/api/projects/{pid}').status_code,400)
+        self.manager.put(f'/api/tasks/{ids[0]}',json={'assignee_id':2})
+        self.assertEqual(self.owner.put(f'/api/tasks/{ids[0]}/monthly',json={'year':y,'month':m,'progress':90}).status_code,400)
+        self.assertEqual(self.admin.get(f'/api/performance/3?year={y}').json['months'][str(m)]['market_avg'],60)
+
     def test_auth_and_static_assets(self):
         c=module.app.test_client()
         self.assertEqual(c.get('/api/work/tasks').status_code,401)
@@ -224,7 +274,8 @@ class ProjectManagementTests(unittest.TestCase):
         self.assertEqual(r.status_code,200)
         import openpyxl
         book=openpyxl.load_workbook(BytesIO(r.data))
-        self.assertEqual(len(book.sheetnames),5)
+        self.assertIn('个人任务月报',book.sheetnames)
+        self.assertEqual(len(book.sheetnames),6)
         book.close()
         self.assertEqual(self.owner.get('/api/export/performance.xlsx').status_code,403)
         self.assertEqual(self.manager.get('/api/dept/performance').status_code,200)

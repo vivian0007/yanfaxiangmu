@@ -1393,7 +1393,7 @@ async function js_saveProfile(){
 async function loadMyProjects(){
   var r = await api('GET', '/api/projects');
   if (!r.ok){ toast(r.error || '加载失败', 'danger'); return; }
-  projectList = r.projects || [];
+  projectList = (r.projects || []).filter(function(p){return p.can_manage;});
   fillCodeSelect('fCode', projectList);
   if (r.allowed){ allowedPeriod = r.allowed; }
   $('engPeriodLabel').textContent = allowedPeriod.label || '-';

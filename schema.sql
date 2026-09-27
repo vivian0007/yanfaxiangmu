@@ -18,6 +18,7 @@ CREATE TABLE IF NOT EXISTS users (
 CREATE TABLE IF NOT EXISTS projects (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id       INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  shared_scope TEXT NOT NULL DEFAULT '',
   project_code  TEXT    NOT NULL,
   project_name  TEXT    NOT NULL,
   category      TEXT    NOT NULL CHECK (category IN ('market','self')),
@@ -82,4 +83,14 @@ CREATE INDEX IF NOT EXISTS idx_ms_project ON milestones(project_id);
 CREATE TABLE IF NOT EXISTS settings (
   key   TEXT PRIMARY KEY,
   value TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS task_monthly_reports (
+ task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+ project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+ user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+ year INTEGER NOT NULL, month INTEGER NOT NULL,
+ category TEXT NOT NULL, progress INTEGER NOT NULL CHECK(progress BETWEEN 0 AND 100),
+ done_items TEXT NOT NULL DEFAULT '', undone_items TEXT NOT NULL DEFAULT '',
+ PRIMARY KEY(task_id,year,month)
 );
