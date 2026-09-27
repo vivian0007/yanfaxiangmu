@@ -571,6 +571,7 @@ def task_to_dict(row):
     year,month=allowed_period()
     monthly=get_db().execute('SELECT * FROM task_monthly_reports WHERE task_id=? AND year=? AND month=?',(row['id'],year,month)).fetchone()
     return {
+        "project_category": project["category"],
         "can_edit": can_edit,
         "can_manage": manage,
         "can_edit_details": manage or (own and bool(project['shared_scope']) and can_edit),
