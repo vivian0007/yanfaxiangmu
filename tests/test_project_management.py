@@ -57,6 +57,19 @@ class ProjectManagementTests(unittest.TestCase):
         return self.owner.get(f'/api/projects/{self.pid}/tasks').json['tasks'][0]['id']
 
 
+    def test_manual_weights_permissions_and_persistence(self):
+        values = dict(market_weight=42.5, self_weight=17.25)
+        self.assertEqual(self.owner.put('/api/settings', json=values).status_code, 403)
+        self.assertEqual(self.admin.put('/api/settings', json=values).status_code, 200)
+        module.init_db()
+        saved = self.admin.get('/api/settings').json
+        self.assertEqual(saved['market_weight'], 42.5)
+        self.assertEqual(saved['self_weight'], 17.25)
+        self.assertEqual(saved['full_score'], 59.75)
+        for bad in (-1, 101, 'invalid', None):
+            self.assertEqual(self.admin.put('/api/settings', json=dict(market_weight=bad, self_weight=30)).status_code, 400)
+        self.assertEqual(self.admin.get('/api/settings').json['market_weight'], 42.5)
+
     def org_fixture(self):
         self.db.execute("UPDATE users SET department2='Software' WHERE id IN (2,3)")
         self.db.execute("UPDATE users SET department3='Platform' WHERE id=3")

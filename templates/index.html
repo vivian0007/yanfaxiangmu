@@ -912,7 +912,7 @@
               <select class="form-select" id="boardMonthSelect" onchange="js_renderBoard()"></select>
             </div>
           </div>
-          <div class="mt-2 muted" id="boardWeights" style="font-size:.82rem;"></div>
+          <div class="d-flex align-items-center gap-3 mt-2"><div class="muted" id="boardWeights" style="font-size:.82rem;"></div><button type="button" class="btn btn-outline-primary btn-sm" onclick="js_go('a-settings')">修改权重</button></div>
         </div>
 
         <div class="section-title">当月明细</div>
@@ -935,17 +935,17 @@
             <div class="card-body">
               <p class="muted" style="font-size:.87rem;">
                 绩效总分 = 市场项目平均完成率 × <b>市场权重</b> ＋ 自研项目平均完成率 × <b>自研权重</b>。<br>
-                系统默认两者各 <b>30%</b>（即满分 60 分），可按贵司考核规则自行调整；改动后<b>所有看板与导出立即按新权重计算</b>。
+                由管理员手工填写，每项可设为 <b>0～100%</b>，支持两位小数。初始值各为 30%，不要求合计 100%。保存后<b>所有月份的看板与导出均按新权重计算</b>，原始月报不变。
               </p>
               <div class="row g-3">
                 <div class="col-6">
-                  <label class="form-label">市场项目权重（%）</label>
-                  <input type="number" class="form-control" id="setMarketW" min="0" max="100" step="1"
+                  <label class="form-label" for="setMarketW">市场项目权重（%）</label>
+                  <input type="number" class="form-control" id="setMarketW" min="0" max="100" step="0.01" required
                          oninput="updateSetPreview()" />
                 </div>
                 <div class="col-6">
-                  <label class="form-label">自研项目权重（%）</label>
-                  <input type="number" class="form-control" id="setSelfW" min="0" max="100" step="1"
+                  <label class="form-label" for="setSelfW">自研项目权重（%）</label>
+                  <input type="number" class="form-control" id="setSelfW" min="0" max="100" step="0.01" required
                          oninput="updateSetPreview()" />
                 </div>
               </div>
@@ -2567,8 +2567,9 @@ function updateSetPreview(){
     + fmt0(sw) + '</b> 分 → <b>绩效总分满分 ' + fmt0(mw + sw) + ' 分</b>';
 }
 async function js_saveSettings(){
-  var mw = parseFloat($('setMarketW').value), sw = parseFloat($('setSelfW').value);
-  if (isNaN(mw) || isNaN(sw) || mw < 0 || mw > 100 || sw < 0 || sw > 100){
+  if (!$('setMarketW').reportValidity() || !$('setSelfW').reportValidity()) return;
+  var mw = Number($('setMarketW').value), sw = Number($('setSelfW').value);
+  if (!Number.isFinite(mw) || !Number.isFinite(sw) || mw < 0 || mw > 100 || sw < 0 || sw > 100){
     toast('权重需为 0~100 的数字', 'warning'); return;
   }
   var r = await api('PUT', '/api/settings', { market_weight: mw, self_weight: sw });
