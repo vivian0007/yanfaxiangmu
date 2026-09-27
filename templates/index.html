@@ -2282,13 +2282,14 @@ function renderMonthDetail(u, year, month, r){
     + esc(u.department || '-') + ' ｜ 职位：' + esc(u.position || '-') + '</span></div>'
     + '<div class="row g-3 mb-3">' + card('当月填报项目数', r.total, r.overall_avg, '#1b2743') + '</div>'
     + '<div class="row g-3 mb-3">'
-      + card('市场项目（' + r.market_count + '个）', r.market_count, r.market_avg, '#1b2743')
-      + card('自研项目（' + r.self_count + '个）', r.self_count, r.self_avg, '#2e7d63')
+      + card('市场项目（' + r.market_count + '个'+(r.market_count===0?'，按满分':'')+'）', r.market_count, r.market_avg, '#1b2743')
+      + card('自研项目（' + r.self_count + '个'+(r.self_count===0?'，按满分':'')+'）', r.self_count, r.self_avg, '#2e7d63')
     + '</div>'
+    + '<p class="muted">按当月已填报项目数量统计；某类别数量为 0 时，该类别按对应权重给满分。</p>'
     + '<div class="card mb-0"><div class="card-header">' + month + ' 月绩效核算</div>'
     + '<div class="card-body p-0"><table class="table mb-0">'
-      + '<tr><td>市场项目绩效得分（' + fmt(r.market_avg) + '% × ' + fmt0(r.market_weight) + '%）</td><td class="text-end"><b>' + fmt(r.market_score) + '</b> 分</td></tr>'
-      + '<tr><td>自研项目绩效得分（' + fmt(r.self_avg) + '% × ' + fmt0(r.self_weight) + '%）</td><td class="text-end"><b>' + fmt(r.self_score) + '</b> 分</td></tr>'
+      + '<tr><td>市场项目绩效得分（' + (r.market_count===0?'无项目，按 100':fmt(r.market_avg)) + '% × ' + fmt0(r.market_weight) + '%）</td><td class="text-end"><b>' + fmt(r.market_score) + '</b> 分</td></tr>'
+      + '<tr><td>自研项目绩效得分（' + (r.self_count===0?'无项目，按 100':fmt(r.self_avg)) + '% × ' + fmt0(r.self_weight) + '%）</td><td class="text-end"><b>' + fmt(r.self_score) + '</b> 分</td></tr>'
       + '<tr class="row-current"><td><b>当月绩效总分（满分 ' + fmt0(r.full_score) + ' 分）</b></td><td class="text-end"><b style="font-size:20px;color:#1b2743">' + fmt(r.total_score) + '</b> 分</td></tr>'
     + '</table></div></div>';
 }

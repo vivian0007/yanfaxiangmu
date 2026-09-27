@@ -467,8 +467,8 @@ def api_dept_filters():
 def calc_performance(rows, market_w=0.30, self_w=0.30):
     """
     绩效核算核心算法（rows 需含 category 与 progress 两个字段）：
-      市场项目平均完成率 = 市场项目进度之和 / 市场项目数量   （无则按 0%）
-      自研项目平均完成率 = 自研项目进度之和 / 自研项目数量   （无则按 0%）
+      市场项目平均完成率 = 市场项目进度之和 / 市场项目数量   （无项目时该类别得分按满分，平均完成率仍显示 0%）
+      自研项目平均完成率 = 自研项目进度之和 / 自研项目数量   （无项目时该类别得分按满分，平均完成率仍显示 0%）
       市场项目绩效得分   = 市场平均完成率 × 市场权重（默认 30%，可在「系统设置」中修改）
       自研项目绩效得分   = 自研平均完成率 × 自研权重（默认 30%，可在「系统设置」中修改）
       项目绩效总分       = 两者相加（默认满分 60 分 = 30 + 30）
@@ -480,8 +480,8 @@ def calc_performance(rows, market_w=0.30, self_w=0.30):
 
     market_avg = (sum(p["progress"] for p in market) / len(market)) if market else 0.0
     self_avg = (sum(p["progress"] for p in selfp) / len(selfp)) if selfp else 0.0
-    market_score = market_avg * market_w
-    self_score = self_avg * self_w
+    market_score = market_avg * market_w if market else 100 * market_w
+    self_score = self_avg * self_w if selfp else 100 * self_w
     overall_avg = (sum(p["progress"] for p in rows) / total) if total else 0.0
 
     return {

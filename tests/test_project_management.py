@@ -98,6 +98,19 @@ class ProjectManagementTests(unittest.TestCase):
         self.assertEqual(self.manager.put('/api/person-weights/2',json=dict(use_default=True)).status_code,200)
         self.assertEqual(module.load_weights(self.db,2),(0.3,0.3))
 
+    def test_zero_projects_full_category_score(self):
+        empty=module.calc_performance([],0.425,0.1725)
+        self.assertEqual(empty['total_score'],59.75)
+        self.assertEqual(empty['total'],0)
+        market=module.calc_performance([dict(category='market',progress=0)],0.4,0.2)
+        self.assertEqual(market['market_score'],0)
+        self.assertEqual(market['self_score'],20)
+        own=module.calc_performance([dict(category='self',progress=50)],0.4,0.2)
+        self.assertEqual(own['total_score'],50)
+        both=module.calc_performance([dict(category='market',progress=50),dict(category='self',progress=80)],0.4,0.2)
+        self.assertEqual(both['total_score'],36)
+        self.assertEqual(module.calc_performance([],0,0)['total_score'],0)
+
     def org_fixture(self):
         self.db.execute("UPDATE users SET department2='Software' WHERE id IN (2,3)")
         self.db.execute("UPDATE users SET department3='Platform' WHERE id=3")
@@ -234,7 +247,7 @@ class ProjectManagementTests(unittest.TestCase):
         result=self.admin.get(f'/api/performance/3?year={y}').json['months'][str(m)]
         self.assertEqual(result['total'],1)
         self.assertEqual(result['market_avg'],60)
-        self.assertEqual(result['total_score'],18)
+        self.assertEqual(result['total_score'],48)  # market 18 + empty self category 30
         self.assertEqual(self.manager.put(f'/api/projects/{pid}/progress',json={'year':y,'month':m,'progress':100}).status_code,200)
         self.assertEqual(self.admin.get(f'/api/performance/5?year={y}').json['months'][str(m)]['total'],0)
         self.assertEqual(self.executor.put(f'/api/tasks/{ids[0]}/monthly',json={'year':y-1,'month':m,'progress':90}).status_code,400)
@@ -309,7 +322,7 @@ class ProjectManagementTests(unittest.TestCase):
         self.executor.put(f'/api/tasks/{tid}',json={'status':'done'})
         with module.app.app_context():
             result=module.monthly_performance(module.get_db(),2,year,month)
-        self.assertEqual(result['total_score'],24)
+        self.assertEqual(result['total_score'],54)  # market 24 + empty self category 30
         self.assertEqual(self.db.execute('SELECT progress FROM project_progress WHERE project_id=?',(self.pid,)).fetchone()[0],80)
         r=self.admin.get(f'/api/export/performance.xlsx?year={year}&month={month}')
         self.assertEqual(r.status_code,200)
