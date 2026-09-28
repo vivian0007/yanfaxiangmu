@@ -38,7 +38,7 @@
     root.innerHTML='<div class="pm-body-loading" role="status">正在载入项目工作区…</div>';
     try{const [p,t,m]=await Promise.all([request('GET','/api/projects'),request('GET','/api/work/tasks'),request('GET','/api/work/milestones')]);if(epoch!==state.epoch)return;state.projects=p.projects;state.allowed=p.allowed;state.tasks=t.tasks;state.milestones=m.milestones;syncLegacy();render();}catch(err){if(epoch===state.epoch)root.innerHTML=`<div class="pm-error" role="alert">${e(err.message)} ${button('重新加载',`PM.load('${mode}')`)}</div>`;}
   }
-  async function refresh(){if(state.detail){await detail(state.detail.project.id,state.tab);}else{const q=state.query,f=state.filter,c=state.code,k=state.category;await load(state.mode);state.query=q;state.filter=f;state.code=(state.mode==='pm-tasks'?state.tasks:state.projects).some(p=>p.project_code===c)?c:'';state.category=k;render();}}
+  async function refresh(){if(state.detail){const id=state.detail.project.id,tab=state.tab;const [p,t,m]=await Promise.all([request('GET','/api/projects'),request('GET','/api/work/tasks'),request('GET','/api/work/milestones')]);state.projects=p.projects;state.tasks=t.tasks;state.milestones=m.milestones;state.allowed=p.allowed;syncLegacy();await detail(id,tab);}else{const q=state.query,f=state.filter,c=state.code,k=state.category;await load(state.mode);state.query=q;state.filter=f;state.code=(state.mode==='pm-tasks'?[...state.projects,...state.tasks]:state.projects).some(p=>p.project_code===c)?c:'';state.category=k;render();}}
   function projectRow(p){const n=p.task_total?Math.round(p.task_done/p.task_total*100):0;return `<tr><td><button class="pm-link" onclick="PM.detail(${p.id})"><strong>${e(p.project_name)}</strong><span class="pm-sub">${e(p.project_code)}</span></button></td><td>${avatar(p.owner_name)}${e(p.owner_name)}</td><td>${tag(p.status,PROJECT)}</td><td>${progress(n)}<span class="pm-sub">${p.task_done} / ${p.task_total} 项任务</span></td><td class="${late(p.delivery_date,p.status)?'pm-overdue':''}">${e(p.delivery_date)}</td></tr>`;}
   function projectTable(list){return list.length?`<div class="pm-table-wrap"><table class="pm-table"><thead><tr><th>项目名称</th><th>负责人</th><th>状态</th><th>任务完成率</th><th>交付日期</th></tr></thead><tbody>${list.map(projectRow).join('')}</tbody></table></div>`:empty('还没有项目','创建第一个项目，开始安排任务与交付。');}
   function agenda(ms){return ms.length?ms.map(m=>`<div class="pm-agenda"><div class="pm-agenda-date">${e(m.due_date?m.due_date.slice(5,7)+'月':'待定')}<b>${e(m.due_date?m.due_date.slice(8):'—')}</b></div><div><h3><button class="pm-link" onclick="PM.detail(${m.project_id},'milestones')">${e(m.name)}</button></h3><p>${e(m.project_name)}</p><span class="pm-date ${late(m.due_date,m.status)?'pm-overdue':''}">${late(m.due_date,m.status)?'已逾期':m.status==='done'?'已完成':'待交付'}</span></div></div>`).join(''):empty('暂无待交付里程碑','在项目详情中添加关键节点。');}
@@ -57,7 +57,7 @@
   function toolbar(kind){
     if(state.mode==='pm-projects'||state.mode==='pm-tasks'){
       const isTask=state.mode==='pm-tasks';
-      const codes=[...new Set((isTask?state.tasks:state.projects).map(p=>p.project_code).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'zh-CN',{numeric:true}));
+      const codes=[...new Set((isTask?[...state.projects,...state.tasks]:state.projects).map(p=>p.project_code).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'zh-CN',{numeric:true}));
       return `<div class="pm-project-filters">
         <label>关键字<input class="pm-input" id="pm-query" aria-label="关键字" placeholder="${isTask?'任务名称、项目名称、执行人或任务说明':'项目名称、负责人或任务内容'}" value="${e(state.query)}" oninput="PM.projectFilter('query',this.value)"></label>
         <label>项目编码<select class="pm-input" id="pm-code" aria-label="项目编码" onchange="PM.projectFilter('code',this.value)"><option value="">全部编码</option>${codes.map(c=>`<option value="${e(c)}" ${c===state.code?'selected':''}>${e(c)}</option>`).join('')}</select></label>
@@ -76,7 +76,7 @@
   function projectFilter(key,value){
     if(!['query','code','category','filter'].includes(key))return;
     state[key]=value;
-    el('pm-results').innerHTML=state.mode==='pm-tasks'?board(state.tasks):projectCards();
+    el('pm-results').innerHTML=state.mode==='pm-tasks'?taskWorkspace():projectCards();
     el('pm-filter-count').textContent=state.mode==='pm-tasks'?taskCount():projectCount();
   }
   function resetProjectFilters(){state.query='';state.code='';state.category='';state.filter='';render();}
@@ -85,11 +85,16 @@
   function filteredTasks(tasks){const q=state.query.trim().toLowerCase();return tasks.filter(t=>(!state.code||t.project_code===state.code)&&(!state.category||t.project_category===state.category)&&(!state.filter||t.status===state.filter)&&[t.title,t.detail,t.project_name,t.project_code,t.assignee_name].join(' ').toLowerCase().includes(q));}
   function taskCount(){return `共 ${state.tasks.length} 项任务，当前显示 ${filteredTasks(state.tasks).length} 项`;}
   function board(tasks){tasks=filteredTasks(tasks);return Object.entries(TASK).filter(([s])=>!state.filter||state.filter===s).map(([s,l])=>{const list=tasks.filter(t=>t.status===s);return `<section class="pm-column"><h2>${l}<span>${list.length}</span></h2>${list.length?list.map(taskCard).join(''):empty('暂无任务')}</section>`;}).join('');}
+  function taskProjects(){
+    const q=state.query.trim().toLowerCase(),matching=new Set(filteredTasks(state.tasks).map(t=>t.project_id));
+    return state.projects.filter(p=>(!state.code||p.project_code===state.code)&&(!state.category||p.category===state.category)&&(!state.filter||matching.has(p.id))&&(!q||[p.project_name,p.project_code,p.owner_name,p.tasks].join(' ').toLowerCase().includes(q)||matching.has(p.id)));
+  }
+  function taskWorkspace(){const projects=taskProjects();return panel('项目 · 与项目中心同步',projects.length?`<div class="pm-table-wrap"><table class="pm-table"><thead><tr><th>项目</th><th>类别</th><th>项目状态</th><th>任务数</th><th>操作</th></tr></thead><tbody>${projects.map(p=>`<tr><td><strong>${e(p.project_name)}</strong><span class="pm-sub">${e(p.project_code)}</span></td><td>${p.category==='market'?'市场项目':'自研项目'}</td><td>${tag(p.status,PROJECT)}</td><td>${p.task_total||0}</td><td><div class="pm-actions">${button('进入项目',`PM.detail(${p.id})`)}${p.can_manage?button('编辑项目',`PM.editProject(${p.id})`):''}</div></td></tr>`).join('')}</tbody></table></div>`:empty('没有符合条件的项目'))+`<div class="pm-note mb-3">项目只需创建一次，即同步显示在工作台、项目中心、任务看板和交付计划。下方为各项目的具体工作任务；状态筛选针对任务。</div><div class="pm-board">${board(state.tasks)}</div>`;}
   function timeline(){const deliveries=state.projects.map(p=>({date:p.delivery_date,title:p.project_name,sub:p.project_code,type:'项目交付',status:p.status,pid:p.id}));const milestones=state.milestones.map(m=>({date:m.due_date,title:m.name,sub:m.project_name,type:'里程碑',status:m.status,pid:m.project_id}));const rows=[...deliveries,...milestones].sort((a,b)=>(a.date||'9999').localeCompare(b.date||'9999'));return panel('交付日程 · 按日期排序',rows.length?`<div class="pm-table-wrap"><table class="pm-table"><thead><tr><th>日期</th><th>交付内容</th><th>类型</th><th>状态</th><th></th></tr></thead><tbody>${rows.map(r=>`<tr><td class="${late(r.date,r.status)?'pm-overdue':''}">${e(r.date||'未设定')}</td><td><strong>${e(r.title)}</strong><span class="pm-sub">${e(r.sub)}</span></td><td>${r.type}</td><td>${tag(r.status,{...PROJECT,pending:'待完成'})}${late(r.date,r.status)?' <span class="pm-tag urgent">逾期</span>':''}</td><td>${button('查看',`PM.detail(${r.pid},'milestones')`)}</td></tr>`).join('')}</tbody></table></div>`:empty('暂无交付计划','创建项目并添加里程碑后，将在这里显示。'));}
   function render(){
     if(state.detail)return renderDetail();
     const [en,title,sub]=titles[state.mode];
-    root.innerHTML=header(title,sub,button('刷新','PM.refresh()')+button('＋ 新建项目','PM.editProject()','primary'),en)+(state.mode==='pm-home'?home():state.mode==='pm-projects'?toolbar('项目')+`<div id="pm-results" class="pm-project-grid">${projectCards()}</div>`:state.mode==='pm-tasks'?toolbar('任务')+`<div class="pm-actions mb-3">${button('＋ 添加任务','PM.editTask()','primary')}<span class="pm-note">成员维护自己的工作任务，负责人统筹任务安排。</span></div><div id="pm-results" class="pm-board">${board(state.tasks)}</div>`:timeline());
+    root.innerHTML=header(title,sub,button('刷新','PM.refresh()')+button('＋ 新建项目','PM.editProject()','primary'),en)+(state.mode==='pm-home'?home():state.mode==='pm-projects'?toolbar('项目')+`<div id="pm-results" class="pm-project-grid">${projectCards()}</div>`:state.mode==='pm-tasks'?toolbar('任务')+`<div class="pm-actions mb-3">${button('＋ 添加任务','PM.editTask()','primary')}<span class="pm-note">选择下方已有项目安排任务，无需重复新建项目。</span></div><div id="pm-results">${taskWorkspace()}</div>`:timeline());
   }
   async function detail(id,tab='tasks'){
     const epoch=++state.epoch;root.innerHTML='<div class="pm-body-loading">正在加载项目详情…</div>';
@@ -137,7 +142,7 @@
   async function editShare(pid){try{const r=await request('GET','/api/projects/'+pid+'/share');form('项目占比 · '+r.year+'年'+r.month+'月',
     '<p class="full">每人每月分别分配，市场、自研各自合计不超过100%。此项目最多可设置 '+r.available+'%。同一项目多个任务共用这一个占比。新月份不自动沿用上月占比。</p>'+field('我的项目占比（%）','share',r.share,'number',true,true).replace('step="1"','step="0.01"'),
     values=>request('PUT','/api/projects/'+pid+'/share',{share:Number(values.share),year:r.year,month:r.month}));}catch(err){toast(err.message,'danger');}}
-  window.PM={editShare,reportTask,projectFilter,resetProjectFilters,load,refresh,detail,editProject,editTask,changeTask,editMilestone,toggleMilestone,removeMilestone,removeProject,reportMonth,tab(t){state.tab=t;renderDetail();},filter(q,f){if(q!==undefined)state.query=q;if(f!==undefined)state.filter=f;el('pm-results').innerHTML=state.mode==='pm-projects'?projectCards():board(state.tasks);}};
+  window.PM={editShare,reportTask,projectFilter,resetProjectFilters,load,refresh,detail,editProject,editTask,changeTask,editMilestone,toggleMilestone,removeMilestone,removeProject,reportMonth,tab(t){state.tab=t;renderDetail();},filter(q,f){if(q!==undefined)state.query=q;if(f!==undefined)state.filter=f;el('pm-results').innerHTML=state.mode==='pm-projects'?projectCards():taskWorkspace();}};
   // Place the shared workspace inside the active role's layout.
   ENG_MODULES.unshift(...modes);ADMIN_MODULES.unshift(...modes);
   const oldShow=showModuleOnly,oldLoad=loadModuleData;
