@@ -583,7 +583,7 @@ def task_to_dict(row):
     user=current_user()
     manage=project_can_manage(project)
     own=row['assignee_id']==user['id']
-    can_edit=manage or (own and (not project['shared_scope'] or shared_project_visible(project,user)))
+    can_edit=manage or (own and shared_project_visible(project,user))
     year,month=allowed_period()
     monthly=get_db().execute('SELECT * FROM task_monthly_reports WHERE task_id=? AND year=? AND month=?',(row['id'],year,month)).fetchone()
     return {
@@ -879,8 +879,14 @@ def shared_project_visible(project, user=None):
     user = user if user is not None else current_user()
     if user['is_admin'] or project['user_id'] == user['id']:
         return True
-    scope = json.loads(project['shared_scope']) if project['shared_scope'] else []
-    return bool(scope) and list(organization_path(user))[:len(scope)] == scope
+    if not user['is_manager']:
+        return False
+    owner=get_db().execute('SELECT * FROM users WHERE id=?',(project['user_id'],)).fetchone()
+    if owner is None or owner['is_admin']:
+        return False
+    level=user['manager_level']
+    scope=list(organization_path(user))[:level]
+    return all(scope) and list(organization_path(owner))[:level]==scope
 
 
 def project_can_manage(project):
@@ -1824,9 +1830,7 @@ def api_create_task(pid):
     if verr:
         return fail(verr)
     if not project_can_manage(row):
-        if payload['assignee_id'] not in (None,current_user()['id']):
-            return fail('只能为自己添加工作任务',403)
-        payload['assignee_id'] = current_user()['id']
+        return fail('只能在自己创建的项目中添加任务',403)
     if row['shared_scope'] and payload['assignee_id']:
         person = get_db().execute('SELECT * FROM users WHERE id=?',(payload['assignee_id'],)).fetchone()
         if not shared_project_visible(row,person):
@@ -1854,7 +1858,7 @@ def _get_task_or_403(tid):
     if not u["is_admin"] and t["owner_id"] != u["id"] and t["assignee_id"] != u["id"]:
         return None, fail("无权操作该任务", 403)
     project = db.execute('SELECT * FROM projects WHERE id=?',(t['project_id'],)).fetchone()
-    if project['shared_scope'] and not shared_project_visible(project,u):
+    if not shared_project_visible(project,u):
         return None, fail('已不在项目部门范围内',403)
     return t, None
 
@@ -2032,6 +2036,8 @@ def api_my_tasks():
     ).fetchall()
     out = []
     for r in rows:
+        project=db.execute('SELECT * FROM projects WHERE id=?',(r['project_id'],)).fetchone()
+        if not shared_project_visible(project,u):continue
         d = task_to_dict(r)
         d["project_code"] = r["project_code"]
         d["project_name"] = r["project_name"]
@@ -2065,6 +2071,7 @@ def api_dashboard():
         "WHERE p.user_id = ? OR t.assignee_id = ?",
         (u["id"], u["id"]),
     ).fetchall()
+    tasks=[t for t in tasks if shared_project_visible(db.execute('SELECT * FROM projects WHERE id=?',(t['project_id'],)).fetchone(),u)]
     t_by_status = {s: 0 for s in TASK_STATUS}
     today = date.today().isoformat()
     overdue = []
@@ -2103,7 +2110,7 @@ def api_work_tasks():
     u = current_user()
     projects={p['id']:p for p in get_db().execute('SELECT * FROM projects').fetchall()}
     rows=get_db().execute('SELECT t.*,p.user_id AS owner_id,p.project_name,p.project_code,u.name AS assignee_name FROM tasks t JOIN projects p ON p.id=t.project_id LEFT JOIN users u ON u.id=t.assignee_id ORDER BY t.id DESC').fetchall()
-    rows=[r for r in rows if shared_project_visible(projects[r['project_id']],u) or (not projects[r['project_id']]['shared_scope'] and r['assignee_id']==u['id'])]
+    rows=[r for r in rows if shared_project_visible(projects[r['project_id']],u)]
     return jsonify(ok=True, tasks=[dict(task_to_dict(r), project_name=r["project_name"],
         project_code=r["project_code"], can_manage=bool(u["is_admin"] or r["owner_id"]==u["id"])) for r in rows])
 
