@@ -1125,7 +1125,7 @@
 
 <div class="modal fade" id="forgotPasswordModal" tabindex="-1" aria-labelledby="forgotPasswordTitle"><div class="modal-dialog"><div class="modal-content">
 <div class="modal-header"><h5 id="forgotPasswordTitle" class="modal-title">忘记密码</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="关闭"></button></div>
-<div class="modal-body"><p>请联系系统管理员，提供姓名和登录手机号，由管理员核实身份后重置密码。</p><ol><li>管理员在「用户管理 → 编辑用户 → 设置 / 重置密码」中设置临时密码。</li><li>使用临时密码登录，系统会要求你设置自己的新密码。</li></ol><p class="muted">当前采用管理员协助找回，尚未开通短信或邮件验证码自助找回。</p></div>
+<div class="modal-body"><p>请联系系统管理员，提供姓名和登录手机号，由管理员核实身份后重置密码。</p><ol><li>管理员在「用户管理 → 重置密码」中设置临时密码。</li><li>使用临时密码登录，系统会要求你设置自己的新密码。</li></ol><p class="muted">当前采用管理员协助找回，尚未开通短信或邮件验证码自助找回。</p></div>
 <div class="modal-footer"><button type="button" class="btn btn-primary" data-bs-dismiss="modal">返回登录</button></div></div></div></div>
 <!-- ================= 修改密码 模态 ================= -->
 <div class="modal fade" id="changePwModal" tabindex="-1">
@@ -1974,6 +1974,7 @@ function renderUserTable(list){
       + '<td>' + role + '</td><td>' + must + '</td>'
       + '<td class="muted" style="font-size:.82rem">' + esc((u.created_at || '').slice(0,10)) + '</td>'
       + '<td><button class="btn btn-sm btn-outline-primary" onclick="js_editUser(' + u.id + ')">编辑</button> '
+      + '<button class="btn btn-sm btn-outline-primary" onclick="js_resetUserPassword(' + u.id + ')">重置密码</button> '
       + '<button class="btn btn-sm btn-outline-secondary" onclick="js_toggleAdmin(' + u.id + ')">'
       + (u.is_admin ? '取消管理员' : '设为管理员') + '</button> '
       + managerRoleButtons(u)
@@ -2076,6 +2077,19 @@ function js_showUserForm(){
   $('userAdmin').value = 'false'; $('userManager').value = '0'; $('userPassword').value = '123456';
   new bootstrap.Modal($('userModal')).show();
 }
+async function js_resetUserPassword(id){
+  var user=usersCache.find(u=>u.id===id);if(!user)return;
+  var dlg=document.createElement('dialog');dlg.className='pm-dialog';
+  dlg.innerHTML='<form><h2>重置密码：'+esc(user.name)+'</h2><p>设置临时密码后，请将密码告知本人。用户下次登录需修改密码。</p><label>新密码<input name="password" type="password" autocomplete="new-password" minlength="6" maxlength="128" required class="form-control"></label><label>确认新密码<input name="confirm" type="password" autocomplete="new-password" minlength="6" maxlength="128" required class="form-control"></label><p role="alert" class="text-danger"></p><footer><button type="button">取消</button><button type="submit">确认重置</button></footer></form>';
+  document.body.append(dlg);var f=dlg.querySelector('form');dlg.onclose=()=>dlg.remove();f.querySelector('[type=button]').onclick=()=>dlg.close();
+  f.onsubmit=async ev=>{ev.preventDefault();var error=f.querySelector('[role=alert]'),btn=f.querySelector('[type=submit]');
+    if(f.elements.password.value!==f.elements.confirm.value){error.textContent='两次输入的密码不一致';return;}
+    btn.disabled=true;try{var result=await api('POST','/api/users/'+id+'/reset-password',{password:f.elements.password.value});
+      if(!result.ok){error.textContent=result.error||'重置失败';return;}dlg.close();toast(result.message);await loadUsers();
+    }catch(err){error.textContent='请求失败，请稍后重试';}finally{btn.disabled=false;}
+  };dlg.showModal();
+}
+
 async function js_editUser(id){
   var r = await api('GET', '/api/users');
   if (!r.ok){ toast('读取失败', 'danger'); return; }

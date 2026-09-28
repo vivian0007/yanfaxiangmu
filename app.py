@@ -1215,6 +1215,8 @@ def api_update_user(uid):
     is_admin = 1 if d.get("is_admin") else 0
     is_manager = 1 if d.get("is_manager") else 0
     new_pw = (d.get("password") or "").strip()
+    if new_pw and not 6 <= len(new_pw) <= 128:
+        return fail("新密码需为6～128位")
 
     if not name:
         return fail("请填写姓名")
@@ -1252,6 +1254,21 @@ def api_update_user(uid):
         )
     db.commit()
     return jsonify(ok=True, message="用户信息已更新")
+
+
+@app.post('/api/users/<int:uid>/reset-password')
+@admin_required
+def api_admin_reset_password(uid):
+    d=request.get_json(silent=True) or {}
+    password=d.get('password')
+    if not isinstance(password,str) or len(password)<6 or len(password)>128:
+        return fail('新密码需为6～128位')
+    db=get_db()
+    if db.execute('SELECT 1 FROM users WHERE id=?',(uid,)).fetchone() is None:
+        return fail('用户不存在',404)
+    db.execute('UPDATE users SET password_hash=?,must_change_password=1 WHERE id=?',(generate_password_hash(password),uid))
+    db.commit()
+    return jsonify(ok=True,message='密码已重置，请通知用户使用新密码登录，登录后需设置自己的密码')
 
 
 @app.delete("/api/users/<int:uid>")

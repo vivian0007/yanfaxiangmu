@@ -168,6 +168,20 @@ class ProjectManagementTests(unittest.TestCase):
         self.assertEqual(self.owner.put(f'/api/projects/{self.pid}/share',json=dict(share=20,year=y-1,month=m)).status_code,400)
         self.assertEqual(self.owner.get(f'/api/projects/{self.pid}/share').json['share'],50)
 
+    def test_admin_dedicated_password_reset(self):
+        route='/api/users/2/reset-password'
+        for client in (self.owner,self.manager,module.app.test_client()):
+            self.assertIn(client.post(route,json={'password':'temporary-123'}).status_code,(401,403))
+        self.assertEqual(self.admin.post(route,json={'password':'short'}).status_code,400)
+        self.assertEqual(self.admin.post('/api/users/999/reset-password',json={'password':'temporary-123'}).status_code,404)
+        before=self.db.execute('SELECT name,department,is_manager FROM users WHERE id=2').fetchone()
+        self.assertEqual(self.admin.post(route,json={'password':'temporary-123'}).status_code,200)
+        client=module.app.test_client()
+        self.assertFalse(client.post('/api/login',json={'phone':'2','password':'test-password'}).json['ok'])
+        self.assertTrue(client.post('/api/login',json={'phone':'2','password':'temporary-123'}).json['ok'])
+        self.assertEqual(self.db.execute('SELECT must_change_password FROM users WHERE id=2').fetchone()[0],1)
+        self.assertEqual(self.db.execute('SELECT name,department,is_manager FROM users WHERE id=2').fetchone(),before)
+
     def org_fixture(self):
         self.db.execute("UPDATE users SET department2='Software' WHERE id IN (2,3)")
         self.db.execute("UPDATE users SET department3='Platform' WHERE id=3")
