@@ -45,7 +45,7 @@ class ProjectManagementTests(unittest.TestCase):
         return c
 
     def project(self, client, **extra):
-        data = dict(project_code='P-001', project_name='Project', category='market', start_date='2026-01-01', delivery_date='2027-01-01',status='planning',priority='high')
+        data = dict(project_code='P-001', project_name='Project', category='market', start_date='2026-01-01', delivery_date='2027-01-01',status='planning',priority='high',project_share=100)
         data.update(extra)
         r = client.post('/api/projects', json=data)
         self.assertEqual(r.status_code, 200, r.json)
@@ -110,6 +110,63 @@ class ProjectManagementTests(unittest.TestCase):
         both=module.calc_performance([dict(category='market',progress=50),dict(category='self',progress=80)],0.4,0.2)
         self.assertEqual(both['total_score'],36)
         self.assertEqual(module.calc_performance([],0,0)['total_score'],0)
+
+    def test_monthly_project_share_limits(self):
+        self.assertEqual(self.owner.put(f'/api/projects/{self.pid}/share',json={'share':20}).status_code,200)
+        ids=[self.pid]
+        for v in (30,40,5):
+            ids.append(self.project(self.owner,project_share=v))
+        payload=dict(project_code='Extra',project_name='Extra',category='market',start_date='2026-01-01',delivery_date='2027-01-01',project_share=5.01)
+        count=self.db.execute('SELECT COUNT(*) FROM projects').fetchone()[0]
+        response=self.owner.post('/api/projects',json=payload)
+        self.assertEqual(response.status_code,400)
+        self.assertIn('5%',response.json['error'])
+        self.assertEqual(self.db.execute('SELECT COUNT(*) FROM projects').fetchone()[0],count)
+        payload['project_share']=5
+        last=self.owner.post('/api/projects',json=payload).json['id']
+        self.assertEqual(self.owner.put(f'/api/projects/{last}/share',json={'share':5.01}).status_code,400)
+        self.assertEqual(self.owner.get(f'/api/projects/{last}/share').json['share'],5)
+        self.assertEqual(self.owner.put(f'/api/projects/{ids[0]}/share',json={'share':10}).status_code,200)
+        self.assertEqual(self.owner.put(f'/api/projects/{last}/share',json={'share':15}).status_code,200)
+        self.project(self.owner,category='self',project_share=100)
+        self.project(self.other,project_share=100)
+        self.assertEqual(self.other.put(f'/api/projects/{last}/share',json={'share':1}).status_code,403)
+        for bad in (-1,101,'NaN',0.001):
+            self.assertEqual(self.owner.put(f'/api/projects/{last}/share',json={'share':bad}).status_code,400)
+        from unittest.mock import patch
+        y,m=module.allowed_period()
+        with patch.object(module,'allowed_period',return_value=(y+1,m)):
+            self.assertEqual(self.owner.get(f'/api/projects/{last}/share').json['available'],100)
+            self.assertEqual(self.owner.get(f'/api/projects/{last}/share').json['share'],0)
+            self.assertEqual(self.owner.put(f'/api/projects/{last}/share',json={'share':100}).status_code,200)
+        self.assertEqual(self.owner.get(f'/api/projects/{last}/share').json['share'],15)
+
+    def test_weighted_project_performance(self):
+        self.owner.put(f'/api/projects/{self.pid}/share',json={'share':20})
+        second=self.project(self.owner,project_share=30)
+        y,m=module.allowed_period()
+        for pid,v in ((self.pid,100),(second,50)):
+            self.owner.put(f'/api/projects/{pid}/progress',json=dict(year=y,month=m,progress=v))
+        result=self.admin.get(f'/api/performance/2?year={y}').json['months'][str(m)]
+        self.assertEqual(result['market_score'],10.5)
+        self.assertEqual(result['total_score'],40.5)
+        self.assertEqual(self.owner.put(f'/api/projects/{self.pid}',json={'category':'self'}).status_code,400)
+        module.init_db()
+        self.assertEqual(self.owner.get(f'/api/projects/{self.pid}/share').json['share'],20)
+
+    def test_share_migration_preserves_history(self):
+        y,m=module.allowed_period()
+        second=self.project(self.owner,project_share=0)
+        for pid,v in ((self.pid,80),(second,40)):
+            self.owner.put(f'/api/projects/{pid}/progress',json=dict(year=y,month=m,progress=v))
+        self.db.execute('DROP TABLE project_shares');self.db.commit()
+        module.init_db()
+        for pid in (self.pid,second):
+            self.assertEqual(self.owner.get(f'/api/projects/{pid}/share').json['share'],50)
+        result=self.admin.get(f'/api/performance/2?year={y}').json['months'][str(m)]
+        self.assertEqual(result['market_score'],18)
+        self.assertEqual(self.owner.put(f'/api/projects/{self.pid}/share',json=dict(share=20,year=y-1,month=m)).status_code,400)
+        self.assertEqual(self.owner.get(f'/api/projects/{self.pid}/share').json['share'],50)
 
     def org_fixture(self):
         self.db.execute("UPDATE users SET department2='Software' WHERE id IN (2,3)")
@@ -244,6 +301,7 @@ class ProjectManagementTests(unittest.TestCase):
         for tid,progress in zip(ids,[40,80]):
             r=self.executor.put(f'/api/tasks/{tid}/monthly',json={'year':y,'month':m,'progress':progress,'done_items':'Done'})
             self.assertEqual(r.status_code,200,r.json)
+        self.assertEqual(self.executor.put(f'/api/projects/{pid}/share',json={'share':100}).status_code,200)
         result=self.admin.get(f'/api/performance/3?year={y}').json['months'][str(m)]
         self.assertEqual(result['total'],1)
         self.assertEqual(result['market_avg'],60)
@@ -329,7 +387,8 @@ class ProjectManagementTests(unittest.TestCase):
         import openpyxl
         book=openpyxl.load_workbook(BytesIO(r.data))
         self.assertIn('个人任务月报',book.sheetnames)
-        self.assertEqual(len(book.sheetnames),6)
+        self.assertIn('项目月度占比',book.sheetnames)
+        self.assertEqual(len(book.sheetnames),7)
         book.close()
         self.assertEqual(self.owner.get('/api/export/performance.xlsx').status_code,403)
         self.assertEqual(self.manager.get('/api/dept/performance').status_code,200)

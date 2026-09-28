@@ -277,6 +277,8 @@ def load_weights(db, user_id=None):
     return pick("market_weight"), pick("self_weight")
 
 
+SHARE_SCHEMA = 'CREATE TABLE IF NOT EXISTS project_shares (user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE, project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE, year INTEGER NOT NULL, month INTEGER NOT NULL CHECK(month BETWEEN 1 AND 12), units INTEGER NOT NULL CHECK(units BETWEEN 0 AND 10000), PRIMARY KEY(user_id,project_id,year,month));'
+
 def init_db():
     """首次启动：建表 + 补列 + 老数据迁移 + 创建默认管理员（幂等，可重复调用）。"""
     os.makedirs(DATA_DIR, exist_ok=True)
@@ -290,6 +292,16 @@ def init_db():
         migrate_add_columns(con)
         if migrate_progress:
             migrate_legacy_progress(con)
+        shares_new = con.execute("SELECT 1 FROM sqlite_master WHERE name='project_shares'").fetchone() is None
+        con.execute(SHARE_SCHEMA)
+        if shares_new:
+            participants = con.execute("SELECT user_id,project_id,category,year,month FROM (SELECT p.user_id,p.id AS project_id,p.category,r.year,r.month FROM projects p JOIN project_progress r ON r.project_id=p.id WHERE p.shared_scope='' UNION SELECT r.user_id,r.project_id,r.category,r.year,r.month FROM task_monthly_reports r) ORDER BY user_id,category,year,month,project_id").fetchall()
+            groups = {}
+            for person in participants:
+                groups.setdefault((person['user_id'],person['category'],person['year'],person['month']),[]).append(person['project_id'])
+            for (uid,category,year,month), ids in groups.items():
+                for index,pid in enumerate(ids):
+                    con.execute('INSERT INTO project_shares VALUES(?,?,?,?,?)',(uid,pid,year,month,10000//len(ids)+(1 if index<10000%len(ids) else 0)))
         for k, v in DEFAULT_SETTINGS.items():          # 默认绩效权重
             con.execute("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)", (k, v))
         row = con.execute("SELECT id FROM users WHERE phone = ?", (ADMIN_PHONE,)).fetchone()
@@ -469,8 +481,8 @@ def calc_performance(rows, market_w=0.30, self_w=0.30):
     绩效核算核心算法（rows 需含 category 与 progress 两个字段）：
       市场项目平均完成率 = 市场项目进度之和 / 市场项目数量   （无项目时该类别得分按满分，平均完成率仍显示 0%）
       自研项目平均完成率 = 自研项目进度之和 / 自研项目数量   （无项目时该类别得分按满分，平均完成率仍显示 0%）
-      市场项目绩效得分   = 市场平均完成率 × 市场权重（默认 30%，可在「系统设置」中修改）
-      自研项目绩效得分   = 自研平均完成率 × 自研权重（默认 30%，可在「系统设置」中修改）
+      市场项目绩效得分   = Σ(本月项目占比 × 完成率) × 市场权重（默认 30%，可在「系统设置」中修改）
+      自研项目绩效得分   = Σ(本月项目占比 × 完成率) × 自研权重（默认 30%，可在「系统设置」中修改）
       项目绩效总分       = 两者相加（默认满分 60 分 = 30 + 30）
     """
     rows = rows or []
@@ -480,12 +492,14 @@ def calc_performance(rows, market_w=0.30, self_w=0.30):
 
     market_avg = (sum(p["progress"] for p in market) / len(market)) if market else 0.0
     self_avg = (sum(p["progress"] for p in selfp) / len(selfp)) if selfp else 0.0
-    market_score = market_avg * market_w if market else 100 * market_w
-    self_score = self_avg * self_w if selfp else 100 * self_w
+    market_score = sum(p['progress']*(p['share'] if 'share' in p.keys() else 1/len(market)) for p in market)*market_w if market else 100*market_w
+    self_score = sum(p['progress']*(p['share'] if 'share' in p.keys() else 1/len(selfp)) for p in selfp)*self_w if selfp else 100*self_w
     overall_avg = (sum(p["progress"] for p in rows) / total) if total else 0.0
 
     return {
         "total": total,
+        "market_weighted_progress": round(market_score/market_w,2) if market_w else 0,
+        "self_weighted_progress": round(self_score/self_w,2) if self_w else 0,
         "market_count": len(market),
         "self_count": len(selfp),
         "market_avg": round(market_avg, 2),
@@ -506,12 +520,14 @@ def monthly_performance(db, user_id, year, month):
     只统计"该月有填报进度"的项目（看板会同时显示该项目数，便于核对）。
     """
     rows = db.execute(
-        "SELECT p.category AS category, pp.progress AS progress "
+        "SELECT p.id AS project_id,p.category AS category, pp.progress AS progress "
         "FROM projects p JOIN project_progress pp ON pp.project_id = p.id "
         "WHERE p.user_id = ? AND p.shared_scope = '' AND pp.year = ? AND pp.month = ?",
         (user_id, year, month),
     ).fetchall()
-    rows=list(rows)+[dict(r) for r in db.execute('SELECT category, AVG(progress) AS progress FROM task_monthly_reports WHERE user_id=? AND year=? AND month=? GROUP BY project_id,category',(user_id,year,month)).fetchall()]
+    rows=list(rows)+[dict(r) for r in db.execute('SELECT project_id,category, AVG(progress) AS progress FROM task_monthly_reports WHERE user_id=? AND year=? AND month=? GROUP BY project_id,category',(user_id,year,month)).fetchall()]
+    allocations={x['project_id']:x['units']/10000 for x in db.execute('SELECT project_id,units FROM project_shares WHERE user_id=? AND year=? AND month=?',(user_id,year,month)).fetchall()}
+    rows=[dict(x,share=allocations.get(x['project_id'],0)) for x in map(dict,rows)]
     market_w, self_w = load_weights(db, user_id)
     return calc_performance(rows, market_w, self_w)
 
@@ -621,7 +637,10 @@ def project_to_dict(row, progress_map=None, month_row=None, task_stats=None):
             "undone_items": month_row["undone_items"] or "",
         }
     total_tasks, done_tasks = (task_stats or {}).get(row["id"], (0, 0))
+    sy,sm=allowed_period()
+    share=get_db().execute('SELECT units FROM project_shares WHERE user_id=? AND project_id=? AND year=? AND month=?',(current_user()['id'],row['id'],sy,sm)).fetchone()
     return {
+        'my_project_share': share[0]/100 if share else 0,
         "id": row["id"],
         "user_id": row["user_id"],
         "shared": bool(row["shared_scope"]),
@@ -889,6 +908,49 @@ def _get_project_or_403(pid):
     return row, None
 
 
+
+def share_units(value):
+    from decimal import Decimal, InvalidOperation
+    try:
+        v=Decimal(str(value))
+        if not v.is_finite() or v<0 or v>100 or v*100 != (v*100).to_integral_value(): raise ValueError()
+        return int(v*100)
+    except (InvalidOperation,ValueError,TypeError):
+        raise ValueError('项目占比需为 0～100 的数字，最多两位小数')
+
+def save_project_share(db,uid,pid,category,value):
+    year,month=allowed_period()
+    units=share_units(value)
+    used=db.execute('SELECT COALESCE(SUM(s.units),0) FROM project_shares s JOIN projects p ON p.id=s.project_id WHERE s.user_id=? AND p.category=? AND s.project_id!=? AND s.year=? AND s.month=?',(uid,category,pid,year,month)).fetchone()[0]
+    if used+units>10000:
+        raise ValueError(('市场' if category=='market' else '自研')+f'项目占比合计不能超过100%；该项目最多可设置 {(10000-used)/100:g}%')
+    db.execute('INSERT INTO project_shares VALUES(?,?,?,?,?) ON CONFLICT(user_id,project_id,year,month) DO UPDATE SET units=excluded.units',(uid,pid,year,month,units))
+
+@app.get('/api/projects/<int:pid>/share')
+@login_required
+def api_get_share(pid):
+    project,err=_get_visible_project(pid)
+    if err:return err
+    db=get_db();uid=current_user()['id'];year,month=allowed_period()
+    own=db.execute('SELECT units FROM project_shares WHERE user_id=? AND project_id=? AND year=? AND month=?',(uid,pid,year,month)).fetchone()
+    used=db.execute('SELECT COALESCE(SUM(s.units),0) FROM project_shares s JOIN projects p ON p.id=s.project_id WHERE s.user_id=? AND p.category=? AND s.project_id!=? AND s.year=? AND s.month=?',(uid,project['category'],pid,year,month)).fetchone()[0]
+    return jsonify(ok=True,year=year,month=month,share=(own[0]/100 if own else 0),available=(10000-used)/100)
+
+@app.put('/api/projects/<int:pid>/share')
+@login_required
+def api_put_share(pid):
+    db=get_db();db.execute('BEGIN IMMEDIATE')
+    project,err=_get_visible_project(pid)
+    if err:return err
+    uid=current_user()['id']
+    if not project['shared_scope'] and project['user_id']!=uid:return fail('只能设置自己的项目占比',403)
+    data=request.get_json(silent=True) or {}
+    year,month=allowed_period()
+    if ('year' in data and data['year']!=year) or ('month' in data and data['month']!=month):return fail('只能设置当前可填报月份的项目占比，请刷新页面')
+    try:save_project_share(db,uid,pid,project['category'],data.get('share'))
+    except ValueError as exc:return fail(str(exc))
+    db.commit();return jsonify(ok=True)
+
 @app.get("/api/projects")
 @login_required
 def api_list_projects():
@@ -933,6 +995,7 @@ def api_create_project():
     undone_items = (d.get("undone_items") or "").strip()[:2000]
 
     db = get_db()
+    db.execute("BEGIN IMMEDIATE")
     owner_id = current_user()["id"]
     if current_user()["is_admin"] and d.get("user_id"):
         try:
@@ -965,6 +1028,10 @@ def api_create_project():
     )
     new_id = cur.lastrowid
     db.execute("UPDATE projects SET shared_scope=? WHERE id=?",(scope,new_id))
+    try:save_project_share(db,owner_id,new_id,payload['category'],d.get('project_share',0))
+    except ValueError as exc:
+        db.rollback()
+        return fail(str(exc))
     if has_progress or done_items or undone_items:
         db.execute(
             "INSERT OR REPLACE INTO project_progress "
@@ -987,6 +1054,14 @@ def api_update_project(pid):
     if verr:
         return fail(verr)
     db = get_db()
+    db.execute('BEGIN IMMEDIATE')
+    if row['category']!=payload['category'] and db.execute('SELECT 1 FROM project_shares WHERE project_id=? AND units>0',(pid,)).fetchone():
+        return fail('项目已有月份占比，不能更改项目类别；请新建正确类别的项目')
+    data=request.get_json(silent=True) or {}
+    if 'project_share' in data:
+        try:save_project_share(db,row['user_id'],pid,payload['category'],data['project_share'])
+        except ValueError as exc:
+            db.rollback();return fail(str(exc))
     db.execute(
         "UPDATE projects SET project_code=?, project_name=?, category=?, start_date=?, delivery_date=?, "
         "tasks=?, status=?, priority=?, updated_at=datetime('now','localtime') WHERE id=?",
@@ -1330,7 +1405,7 @@ def build_performance_workbook(db, users, year, month):
     ws.append(["统计月份", period_label(year, month), "", "", "", "", "", "", "", "", "", ""])
     ws.append(["姓名", "手机号", "部门", "职位", "参与项目数",
                "市场项目数", "市场平均完成率(%)", "市场绩效得分",
-               "自研项目数", "自研平均完成率(%)", "自研绩效得分", "项目绩效总分(满分60)"])
+               "自研项目数", "自研平均完成率(%)", "自研绩效得分", "项目绩效总分(按个人权重)"])
     for u in users:
         r = monthly_performance(db, u["id"], year, month)
         ws.append([u["name"], u["phone"], u["department"] or "", u["position"] or "",
@@ -1424,6 +1499,12 @@ def build_performance_workbook(db, users, year, month):
         for report in db.execute('SELECT r.*,p.project_code,t.title FROM task_monthly_reports r JOIN projects p ON p.id=r.project_id JOIN tasks t ON t.id=r.task_id WHERE r.user_id=? AND r.year=? ORDER BY r.month,r.project_id,r.task_id',(person['id'],year)).fetchall():
             ws5.append([person['name'],report['project_code'],report['title'],report['year'],report['month'],report['progress'],report['done_items'],report['undone_items']])
     _style_sheet(ws5,[16,20,32,10,8,12,40,40])
+    shares_sheet=wb.create_sheet('项目月度占比')
+    shares_sheet.append(['姓名','年','月','项目编码','项目名称','类别','项目占比(%)'])
+    for person in users:
+        for item in db.execute('SELECT s.*,p.project_code,p.project_name,p.category FROM project_shares s JOIN projects p ON p.id=s.project_id WHERE s.user_id=? AND s.year=? ORDER BY s.month,p.category,p.id',(person['id'],year)).fetchall():
+            shares_sheet.append([person['name'],year,item['month'],item['project_code'],item['project_name'],'市场' if item['category']=='market' else '自研',item['units']/100])
+    _style_sheet(shares_sheet,[16,10,8,20,32,12,18])
     bio = BytesIO()
     wb.save(bio)
     bio.seek(0)
