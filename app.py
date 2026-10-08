@@ -289,6 +289,7 @@ def init_db():
         con.executescript(SCHEMA_SQL)
         con.execute('CREATE TABLE IF NOT EXISTS person_weights (user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE, market_weight REAL NOT NULL CHECK(market_weight BETWEEN 0 AND 1), self_weight REAL NOT NULL CHECK(self_weight BETWEEN 0 AND 1));')
         con.execute("PRAGMA foreign_keys = ON")
+        con.executescript("CREATE TABLE IF NOT EXISTS task_extensions (id INTEGER PRIMARY KEY AUTOINCREMENT, task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE, requester_id INTEGER NOT NULL REFERENCES users(id), original_date TEXT NOT NULL, requested_date TEXT NOT NULL, reason TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','approved','rejected','cancelled')), reviewer_id INTEGER REFERENCES users(id), review_note TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, reviewed_at TEXT); CREATE UNIQUE INDEX IF NOT EXISTS one_pending_task_extension ON task_extensions(task_id) WHERE status='pending';")
         migrate_add_columns(con)
         if 'completion_notes' not in {r[1] for r in con.execute('PRAGMA table_info(tasks)')}:
             con.execute("ALTER TABLE tasks ADD COLUMN completion_notes TEXT NOT NULL DEFAULT ''")
@@ -588,7 +589,10 @@ def task_to_dict(row):
     can_edit=manage or (own and shared_project_visible(project,user))
     year,month=allowed_period()
     monthly=get_db().execute('SELECT * FROM task_monthly_reports WHERE task_id=? AND year=? AND month=?',(row['id'],year,month)).fetchone()
+    extension=get_db().execute('SELECT e.*,u.name AS requester_name FROM task_extensions e JOIN users u ON u.id=e.requester_id WHERE e.task_id=? ORDER BY e.id DESC LIMIT 1',(row['id'],)).fetchone()
     return {
+        'extension': dict(extension) if extension and (manage or extension['requester_id']==user['id']) else None,
+        'can_request_extension': own and not manage and row['status']!='done',
         "project_category": project["category"],
         "completion_notes": row["completion_notes"] or "",
         "can_edit": can_edit,
@@ -1904,6 +1908,8 @@ def api_update_task(tid):
     u = current_user()
     project = get_db().execute('SELECT * FROM projects WHERE id=?',(t['project_id'],)).fetchone()
     if not project_can_manage(project):
+        if 'due_date' in d and d['due_date']!=t['due_date']:
+            return fail('修改完成时间需要提交延期申请，由项目负责人审批',403)
         if project['shared_scope']:
             if 'assignee_id' in d and str(d['assignee_id']) != str(u['id']):
                 return fail('不能转派他人的工作任务',403)
@@ -1935,9 +1941,49 @@ def api_update_task(tid):
         (payload["title"], payload["detail"], payload["assignee_id"], payload["status"],
          payload["priority"], payload["due_date"], payload["progress"], completion, tid),
     )
+    if payload['due_date']!=t['due_date'] or payload['assignee_id']!=t['assignee_id']:
+        db.execute("UPDATE task_extensions SET status='cancelled',review_note='任务日期或执行人已变更，申请已失效',reviewed_at=CURRENT_TIMESTAMP WHERE task_id=? AND status='pending'",(tid,))
     db.commit()
     return jsonify(ok=True, message="任务已更新")
 
+
+
+@app.post('/api/tasks/<int:tid>/extensions')
+@login_required
+def api_request_extension(tid):
+    db=get_db();db.execute('BEGIN IMMEDIATE')
+    task,err=_get_task_or_403(tid)
+    if err:return err
+    u=current_user()
+    if task['assignee_id']!=u['id']:return fail('只能为自己的任务申请延期',403)
+    if task['owner_id']==u['id'] or u['is_admin']:return fail('项目负责人可直接调整计划，无需向自己申请')
+    if task['status']=='done':return fail('已完成的任务不能申请延期')
+    d=request.get_json(silent=True) or {};new=d.get('requested_date');reason=d.get('reason')
+    if not task['due_date']:return fail('请先联系负责人设置原完成日期')
+    if not new or not valid_optional_date(new) or new<=task['due_date'] or new<date.today().isoformat():return fail('新完成日期须晚于原日期，且不能早于今天')
+    if not isinstance(reason,str) or not reason.strip() or len(reason)>2000:return fail('请填写延期原因，最多2000字')
+    if db.execute("SELECT 1 FROM task_extensions WHERE task_id=? AND status='pending'",(tid,)).fetchone():return fail('已有待审批的延期申请，请勿重复提交')
+    db.execute('INSERT INTO task_extensions(task_id,requester_id,original_date,requested_date,reason) VALUES(?,?,?,?,?)',(tid,u['id'],task['due_date'],new,reason.strip()))
+    db.commit();return jsonify(ok=True,message='延期申请已提交，批准前保留原完成日期')
+
+@app.put('/api/task-extensions/<int:eid>')
+@login_required
+def api_review_extension(eid):
+    db=get_db();db.execute('BEGIN IMMEDIATE')
+    extension=db.execute('SELECT * FROM task_extensions WHERE id=?',(eid,)).fetchone()
+    if extension is None:return fail('申请不存在',404)
+    task=db.execute('SELECT * FROM tasks WHERE id=?',(extension['task_id'],)).fetchone()
+    project=db.execute('SELECT * FROM projects WHERE id=?',(task['project_id'],)).fetchone()
+    if not project_can_manage(project) or current_user()['id']==extension['requester_id']:return fail('仅项目负责人或管理员可审批，不能审批自己的申请',403)
+    if extension['status']!='pending':return fail('此申请已处理，请刷新页面')
+    d=request.get_json(silent=True) or {};decision=d.get('decision');note=d.get('review_note','')
+    if decision not in ('approved','rejected'):return fail('请选择批准或驳回')
+    if not isinstance(note,str) or len(note)>2000:return fail('审批说明最多2000字')
+    if decision=='approved':
+        if task['assignee_id']!=extension['requester_id'] or task['due_date']!=extension['original_date'] or task['status']=='done':return fail('任务已变更，不能批准此申请，请驳回后重新申请')
+        db.execute("UPDATE tasks SET due_date=?,updated_at=datetime('now','localtime') WHERE id=?",(extension['requested_date'],task['id']))
+    db.execute('UPDATE task_extensions SET status=?,reviewer_id=?,review_note=?,reviewed_at=CURRENT_TIMESTAMP WHERE id=?',(decision,current_user()['id'],note,eid))
+    db.commit();return jsonify(ok=True,message='审批结果已保存')
 
 @app.delete("/api/tasks/<int:tid>")
 @login_required

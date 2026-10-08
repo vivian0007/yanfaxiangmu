@@ -239,6 +239,48 @@ class ProjectManagementTests(unittest.TestCase):
         payload['share_year']=y
         self.assertEqual(self.owner.put(f'/api/tasks/{tid}',json=payload).status_code,403)
 
+    def test_task_extension_approval_flow(self):
+        from datetime import date,timedelta
+        tid=self.task();url=f'/api/tasks/{tid}'
+        original=(date.today()+timedelta(days=2)).isoformat()
+        later=(date.today()+timedelta(days=5)).isoformat()
+        self.assertEqual(self.owner.put(url,json={'due_date':original}).status_code,200)
+        self.assertEqual(self.executor.put(url,json={'due_date':later}).status_code,403)
+        self.assertEqual(self.other.post(url+'/extensions',json={'requested_date':later,'reason':'Need time'}).status_code,403)
+        self.assertEqual(self.executor.post(url+'/extensions',json={'requested_date':original,'reason':'Need time'}).status_code,400)
+        self.assertEqual(self.executor.post(url+'/extensions',json={'requested_date':later,'reason':''}).status_code,400)
+        self.assertEqual(self.executor.post(url+'/extensions',json={'requested_date':later,'reason':'Waiting for parts'}).status_code,200)
+        self.assertEqual(self.executor.post(url+'/extensions',json={'requested_date':later,'reason':'Duplicate'}).status_code,400)
+        task=self.owner.get(f'/api/projects/{self.pid}/tasks').json['tasks'][0]
+        self.assertEqual(task['due_date'],original)
+        eid=task['extension']['id']
+        for actor in (self.executor,self.other,self.manager):
+            self.assertEqual(actor.put(f'/api/task-extensions/{eid}',json={'decision':'approved'}).status_code,403)
+        self.assertEqual(self.owner.put(f'/api/task-extensions/{eid}',json={'decision':'rejected','review_note':'Please revise'}).status_code,200)
+        self.assertEqual(self.owner.get(f'/api/projects/{self.pid}/tasks').json['tasks'][0]['due_date'],original)
+        self.assertEqual(self.executor.post(url+'/extensions',json={'requested_date':later,'reason':'Revised plan'}).status_code,200)
+        eid=self.owner.get(f'/api/projects/{self.pid}/tasks').json['tasks'][0]['extension']['id']
+        self.assertEqual(self.owner.put(f'/api/task-extensions/{eid}',json={'decision':'approved'}).status_code,200)
+        self.assertEqual(self.executor.get('/api/work/tasks').json['tasks'][0]['due_date'],later)
+        self.assertEqual(self.owner.put(f'/api/task-extensions/{eid}',json={'decision':'approved'}).status_code,400)
+        next_date=(date.today()+timedelta(days=7)).isoformat()
+        self.executor.post(url+'/extensions',json={'requested_date':next_date,'reason':'Another request'})
+        eid=self.owner.get(f'/api/projects/{self.pid}/tasks').json['tasks'][0]['extension']['id']
+        self.owner.put(url,json={'assignee_id':2})
+        self.assertEqual(self.owner.get(f'/api/projects/{self.pid}/tasks').json['tasks'][0]['extension']['status'],'cancelled')
+        self.assertEqual(self.owner.put(f'/api/task-extensions/{eid}',json={'decision':'approved'}).status_code,400)
+
+    def test_owner_and_engineer_independent_shares(self):
+        tid=self.task();y,m=module.allowed_period()
+        self.owner.put(f'/api/projects/{self.pid}/share',json={'share':30})
+        payload=dict(project_share=70,share_year=y,share_month=m,completion_notes='My work')
+        self.assertEqual(self.executor.put(f'/api/tasks/{tid}',json=payload).status_code,200)
+        self.assertEqual(self.owner.get(f'/api/projects/{self.pid}/share').json['share'],30)
+        self.assertEqual(self.executor.get(f'/api/projects/{self.pid}/share').json['share'],70)
+        payload['project_share']=40
+        self.assertEqual(self.executor.put(f'/api/tasks/{tid}',json=payload).status_code,200)
+        self.assertEqual(self.owner.get(f'/api/projects/{self.pid}/share').json['share'],30)
+
     def org_fixture(self):
         self.db.execute("UPDATE users SET department2='Software' WHERE id IN (2,3)")
         self.db.execute("UPDATE users SET department3='Platform' WHERE id=3")
