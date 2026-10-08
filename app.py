@@ -290,6 +290,8 @@ def init_db():
         con.execute('CREATE TABLE IF NOT EXISTS person_weights (user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE, market_weight REAL NOT NULL CHECK(market_weight BETWEEN 0 AND 1), self_weight REAL NOT NULL CHECK(self_weight BETWEEN 0 AND 1));')
         con.execute("PRAGMA foreign_keys = ON")
         migrate_add_columns(con)
+        if 'completion_notes' not in {r[1] for r in con.execute('PRAGMA table_info(tasks)')}:
+            con.execute("ALTER TABLE tasks ADD COLUMN completion_notes TEXT NOT NULL DEFAULT ''")
         if migrate_progress:
             migrate_legacy_progress(con)
         shares_new = con.execute("SELECT 1 FROM sqlite_master WHERE name='project_shares'").fetchone() is None
@@ -588,6 +590,7 @@ def task_to_dict(row):
     monthly=get_db().execute('SELECT * FROM task_monthly_reports WHERE task_id=? AND year=? AND month=?',(row['id'],year,month)).fetchone()
     return {
         "project_category": project["category"],
+        "completion_notes": row["completion_notes"] or "",
         "can_edit": can_edit,
         "can_manage": manage,
         "can_edit_details": manage or (own and bool(project['shared_scope']) and can_edit),
@@ -1903,8 +1906,11 @@ def api_update_task(tid):
         if project['shared_scope']:
             if 'assignee_id' in d and str(d['assignee_id']) != str(u['id']):
                 return fail('不能转派他人的工作任务',403)
-        elif any(k not in ('status','progress') for k in d):
-            return fail('任务执行人仅可更新状态和进度',403)
+        elif any(k not in ('status','progress','completion_notes') for k in d):
+            return fail('任务执行人仅可更新状态、进度和任务完成情况',403)
+    completion=d.get('completion_notes',t['completion_notes'])
+    if not isinstance(completion,str) or len(completion)>2000:
+        return fail('任务完成情况需为文本，最多2000字')
     payload, verr = _task_payload(dict(dict(t), **d))
     if verr:
         return fail(verr)
@@ -1914,10 +1920,10 @@ def api_update_task(tid):
             return fail('执行人不在项目部门范围内')
     db = get_db()
     db.execute(
-        "UPDATE tasks SET title=?, detail=?, assignee_id=?, status=?, priority=?, due_date=?, progress=?, "
+        "UPDATE tasks SET title=?, detail=?, assignee_id=?, status=?, priority=?, due_date=?, progress=?, completion_notes=?, "
         "updated_at=datetime('now','localtime') WHERE id=?",
         (payload["title"], payload["detail"], payload["assignee_id"], payload["status"],
-         payload["priority"], payload["due_date"], payload["progress"], tid),
+         payload["priority"], payload["due_date"], payload["progress"], completion, tid),
     )
     db.commit()
     return jsonify(ok=True, message="任务已更新")

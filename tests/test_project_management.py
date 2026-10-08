@@ -205,6 +205,22 @@ class ProjectManagementTests(unittest.TestCase):
         self.assertEqual(self.manager.post(f'/api/projects/{pid}/tasks',json=dict(title='Invalid batch',assignee_ids=[3,999])).status_code,400)
         self.assertEqual(len(self.manager.get(f'/api/projects/{pid}/tasks').json['tasks']),2)
 
+    def test_task_completion_notes(self):
+        tid=self.task()
+        route=f'/api/tasks/{tid}'
+        note='已完成设计和联调。\n待确认验收结果。'
+        self.assertEqual(self.executor.put(route,json={'completion_notes':note}).status_code,200)
+        task=self.owner.get(f'/api/projects/{self.pid}/tasks').json['tasks'][0]
+        self.assertEqual(task['completion_notes'],note)
+        self.assertEqual(self.other.put(route,json={'completion_notes':'wrong'}).status_code,403)
+        self.assertEqual(self.executor.put(route,json={'completion_notes':123}).status_code,400)
+        self.assertEqual(self.executor.put(route,json={'completion_notes':'a'*2001}).status_code,400)
+        self.assertEqual(self.executor.put(route,json={'progress':60}).status_code,200)
+        module.init_db()
+        self.assertEqual(self.owner.get(f'/api/projects/{self.pid}/tasks').json['tasks'][0]['completion_notes'],note)
+        self.assertEqual(self.executor.put(route,json={'completion_notes':''}).status_code,200)
+        self.assertEqual(self.owner.get(f'/api/projects/{self.pid}/tasks').json['tasks'][0]['completion_notes'],'')
+
     def org_fixture(self):
         self.db.execute("UPDATE users SET department2='Software' WHERE id IN (2,3)")
         self.db.execute("UPDATE users SET department3='Platform' WHERE id=3")
