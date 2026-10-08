@@ -221,6 +221,24 @@ class ProjectManagementTests(unittest.TestCase):
         self.assertEqual(self.executor.put(route,json={'completion_notes':''}).status_code,200)
         self.assertEqual(self.owner.get(f'/api/projects/{self.pid}/tasks').json['tasks'][0]['completion_notes'],'')
 
+    def test_task_share_atomic_save(self):
+        tid=self.task()
+        y,m=module.allowed_period()
+        second=self.project(self.executor,project_share=95)
+        payload=dict(project_share=5,share_year=y,share_month=m,progress=50,completion_notes='Finished design')
+        self.assertEqual(self.executor.put(f'/api/tasks/{tid}',json=payload).status_code,200)
+        self.assertEqual(self.executor.get(f'/api/projects/{self.pid}/share').json['share'],5)
+        payload.update(project_share=5.01,progress=90,completion_notes='Should not save')
+        self.assertEqual(self.executor.put(f'/api/tasks/{tid}',json=payload).status_code,400)
+        task=self.owner.get(f'/api/projects/{self.pid}/tasks').json['tasks'][0]
+        self.assertEqual(task['progress'],50)
+        self.assertEqual(task['completion_notes'],'Finished design')
+        self.assertEqual(self.executor.get(f'/api/projects/{self.pid}/share').json['share'],5)
+        payload.update(project_share=5,share_year=y-1)
+        self.assertEqual(self.executor.put(f'/api/tasks/{tid}',json=payload).status_code,400)
+        payload['share_year']=y
+        self.assertEqual(self.owner.put(f'/api/tasks/{tid}',json=payload).status_code,403)
+
     def org_fixture(self):
         self.db.execute("UPDATE users SET department2='Software' WHERE id IN (2,3)")
         self.db.execute("UPDATE users SET department3='Platform' WHERE id=3")

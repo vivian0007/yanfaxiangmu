@@ -127,13 +127,15 @@
     const selected=state.detail?.project||editableProjects[0];
     const manage=id?t.can_manage:!!selected?.can_manage;
     const full=!id||t.can_edit_details;
+    const share=id&&t.assignee_id===currentUser.id?await request('GET','/api/projects/'+t.project_id+'/share'):null;
     const users=manage?{'':'未分配',...await userOptions(id?t.project_id:selected.id)}:{[currentUser.id]:currentUser.name};
     const fields=(full?(!id&&!state.detail?select('所属项目','project_id',Object.fromEntries(editableProjects.map(p=>[p.id,p.project_name])),selected.id,true):'')+
       field('任务名称 *','title',t.title,'text',true,true)+(!id&&manage?'<label class="full">分配工程师（可多选，每人生成一项任务）<select name="assignee_ids" multiple size="6" required aria-label="分配工程师">'+options(Object.fromEntries(Object.entries(users).filter(([id])=>id)), '')+'</select><small>按住 Ctrl 可选择多名工程师；不同工作内容可分别分配。</small></label>':select('执行人','assignee_id',users,manage?(t.assignee_id||''):currentUser.id))+field('截止日期','due_date',t.due_date,'date')+select('优先级','priority',PRIORITY,t.priority||'normal'):'')+
-      select('任务状态','status',TASK,t.status||'todo')+field('完成进度（0–100）','progress',t.progress||0,'number')+(full?area('任务说明','detail',t.detail):'')+(id?area('任务完成情况','completion_notes',t.completion_notes):'');
+      select('任务状态','status',TASK,t.status||'todo')+field('完成进度（0–100）','progress',t.progress||0,'number')+(full?area('任务说明','detail',t.detail):'')+(id?area('任务完成情况','completion_notes',t.completion_notes):'')+(share?field('我的本月项目占比（%）','project_share',share.share,'number',true,true).replace('step="1"','step="0.01"')+'<p class="full pm-note">填报月份：'+share.year+'年'+share.month+'月；该项目最多可设置 '+share.available+'%。同一项目的多个任务共用此占比。</p>':'');
     form(id?'维护工作任务':'分配工程师任务',fields,async values=>{
       const pid=state.detail?.project.id||values.project_id;delete values.project_id;
       values.progress=Number(values.progress);
+      if(share){values.project_share=Number(values.project_share);values.share_year=share.year;values.share_month=share.month;}
       if(!id&&manage){values.assignee_ids=Array.from(dialog.querySelector('[name=assignee_ids]').selectedOptions).map(o=>Number(o.value));}
       await request(id?'PUT':'POST',id?'/api/tasks/'+id:'/api/projects/'+pid+'/tasks',values);
     });

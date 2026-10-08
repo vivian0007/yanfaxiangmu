@@ -1896,6 +1896,7 @@ def _get_task_or_403(tid):
 @app.put("/api/tasks/<int:tid>")
 @login_required
 def api_update_task(tid):
+    get_db().execute('BEGIN IMMEDIATE')
     t, err = _get_task_or_403(tid)
     if err:
         return err
@@ -1906,7 +1907,7 @@ def api_update_task(tid):
         if project['shared_scope']:
             if 'assignee_id' in d and str(d['assignee_id']) != str(u['id']):
                 return fail('不能转派他人的工作任务',403)
-        elif any(k not in ('status','progress','completion_notes') for k in d):
+        elif any(k not in ('status','progress','completion_notes','project_share','share_year','share_month') for k in d):
             return fail('任务执行人仅可更新状态、进度和任务完成情况',403)
     completion=d.get('completion_notes',t['completion_notes'])
     if not isinstance(completion,str) or len(completion)>2000:
@@ -1919,6 +1920,15 @@ def api_update_task(tid):
         if not assignee_allowed(project,person):
             return fail('执行人不在项目部门范围内')
     db = get_db()
+    if 'project_share' in d:
+        if t['assignee_id']!=u['id'] or payload['assignee_id']!=u['id']:
+            return fail('只能设置本人任务所属项目的占比',403)
+        sy,sm=allowed_period()
+        if d.get('share_year')!=sy or d.get('share_month')!=sm:
+            return fail('填报月份已变化，请重新打开任务窗口')
+        try:save_project_share(db,u['id'],t['project_id'],project['category'],d['project_share'])
+        except ValueError as exc:
+            db.rollback();return fail(str(exc))
     db.execute(
         "UPDATE tasks SET title=?, detail=?, assignee_id=?, status=?, priority=?, due_date=?, progress=?, completion_notes=?, "
         "updated_at=datetime('now','localtime') WHERE id=?",
