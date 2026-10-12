@@ -16,3 +16,5 @@ body{font-family:Inter,"Microsoft YaHei",sans-serif;background:var(--bg);color:v
 @media(max-width:560px){.pm-project-filters{padding:14px}.pm-project-filters label:first-child{grid-column:1/-1}}
 
 .org-filter-bar{display:flex;gap:12px;flex-wrap:wrap;align-items:end;margin-bottom:16px}.org-filter-bar label{flex:1;min-width:180px;margin:0}
+
+.pm-task-group h3{overflow-wrap:anywhere}.pm-group-project{margin:10px 0;overflow-wrap:anywhere;font-weight:600}.pm-group-people{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 14px}.pm-group-details{margin-top:14px;border-top:1px solid #e2e8e7;padding-top:10px}.pm-group-details summary{cursor:pointer;color:#176b5c;font-weight:600}.pm-group-details .pm-task{margin-top:12px;background:#f8faf9;border:1px solid #e2e8e7}
